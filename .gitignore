@@ -1,0 +1,25 @@
+# Dart / Flutter
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+coverage/
+
+# Generated files
+*.g.dart
+*.freezed.dart
+
+# IDE / platform-specific
+.idea/
+.vscode/
+*.iml
+.DS_Store
+
+# Firebase local configuration
+firebase_options.dart
+.env
+.env.*
+!.env.example
