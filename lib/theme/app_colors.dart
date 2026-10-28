@@ -9,10 +9,16 @@ abstract final class AppColors {
   static const background = Color(0xFF05030A);
   static const surface = Color(0xFF0D0918);
   static const elevatedSurface = Color(0xFF151027);
+  static const glassSurface = Color(0xF2110E1B);
+  static const artworkDark = Color(0xFF17132B);
+  static const artworkViolet = Color(0xFF241A45);
   static const textPrimary = Color(0xFFF8F7FF);
   static const textSecondary = Color(0xFFB8B2CC);
+  static const textMuted = Color(0xFF918AA8);
   static const muted = Color(0xFF77708C);
   static const success = Color(0xFF34D399);
+  static const violet = Color(0xFF8B5CF6);
+  static const indigo = Color(0xFF312E81);
 
   static const deepPurpleGradient = [
     Color(0xFF1E1B4B),

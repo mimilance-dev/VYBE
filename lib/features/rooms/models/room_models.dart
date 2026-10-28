@@ -82,6 +82,16 @@ class RoomPlaybackState {
         'serverTimestamp': serverTimestamp ?? FieldValue.serverTimestamp(),
         'revision': revision
       };
+
+  RoomPlaybackState copy({String? provider, String? trackId, bool? isPlaying,
+      int? positionMs, DateTime? serverTimestamp, int? revision}) =>
+      RoomPlaybackState(
+          provider: provider ?? this.provider,
+          trackId: trackId ?? this.trackId,
+          isPlaying: isPlaying ?? this.isPlaying,
+          positionMs: positionMs ?? this.positionMs,
+          serverTimestamp: serverTimestamp ?? this.serverTimestamp,
+          revision: revision ?? this.revision);
 }
 
 class ListeningRoom {

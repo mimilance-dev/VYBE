@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/room_models.dart';
 import '../repositories/room_repository.dart';
+import '../playback/playback_command.dart';
 import '../services/room_service.dart';
 import 'room_presence_platform.dart';
 
@@ -53,6 +54,10 @@ class UnconfiguredRoomRepository implements RoomRepository {
   Future<void> setOffline(String roomId, String userId) => Future.error(error);
   @override
   Future<void> leave(String roomId, String userId) => Future.error(error);
+  @override
+  Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command) => Future.error(error);
+  @override
+  Future<void> submitPlaybackCheckpoint(String roomId, String userId, int positionMs) => Future.error(error);
 }
 
 final roomRepositoryProvider = Provider<RoomRepository>((ref) =>

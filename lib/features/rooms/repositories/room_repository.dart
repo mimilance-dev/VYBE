@@ -1,11 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/room_models.dart';
+import '../playback/playback_command.dart';
+import '../playback/sync_engine.dart';
 
 class RoomFullException implements Exception {
   const RoomFullException();
   @override
-  String toString() => 'This room is full. VYBE rooms are for two people.';
+  String toString() => 'This room is already vibing with two people.';
 }
 
 class RoomNotFoundException implements Exception {
@@ -37,6 +39,9 @@ abstract interface class RoomRepository {
   Future<void> heartbeat(String roomId, String userId);
   Future<void> setOffline(String roomId, String userId);
   Future<void> leave(String roomId, String userId);
+  Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command);
+  Future<void> submitPlaybackCheckpoint(
+      String roomId, String userId, int positionMs);
 }
 
 class FirestoreRoomRepository implements RoomRepository {
@@ -75,7 +80,8 @@ class FirestoreRoomRepository implements RoomRepository {
       'settings': {
         'visibility': 'invite',
         'maxParticipants': 2,
-        'name': name?.trim().isNotEmpty == true ? name!.trim() : 'Listening room'
+        'name':
+            name?.trim().isNotEmpty == true ? name!.trim() : 'Listening room'
       },
     });
     await roomRef.collection('participants').doc(hostId).set({
@@ -120,8 +126,8 @@ class FirestoreRoomRepository implements RoomRepository {
       final room = ListeningRoom.fromSnapshot(roomSnapshot);
       final roster = room.participants.toSet();
       final staleCutoff = DateTime.now().subtract(const Duration(seconds: 45));
-      final participantSnapshots = await Future.wait(roster.map((id) =>
-          transaction.get(roomRef.collection('participants').doc(id))));
+      final participantSnapshots = await Future.wait(roster.map(
+          (id) => transaction.get(roomRef.collection('participants').doc(id))));
       final activeIds = <String>{};
       for (final snapshot in participantSnapshots) {
         final data = snapshot.data();
@@ -214,6 +220,65 @@ class FirestoreRoomRepository implements RoomRepository {
       .update({'isOnline': false, 'lastSeenAt': FieldValue.serverTimestamp()});
 
   @override
+  @override
+  Future<void> submitPlaybackCommand(
+      String roomId, PlaybackCommand command) async {
+    final roomRef = _rooms.doc(roomId);
+    final commandRef =
+        roomRef.collection('playbackCommands').doc(command.commandId);
+    await _firestore.runTransaction((transaction) async {
+      final existing = await transaction.get(commandRef);
+      if (existing.exists) return;
+      final snapshot = await transaction.get(roomRef);
+      if (!snapshot.exists) throw const RoomNotFoundException();
+      final room = ListeningRoom.fromSnapshot(snapshot);
+      final result = const SyncEngine().apply(
+        state: room.playbackState,
+        queue: room.queue,
+        currentTrack: room.currentTrack,
+        command: command,
+        serverTime: DateTime.now(),
+        processedCommandIds: const {},
+      );
+      if (!result.accepted) return;
+      transaction.set(commandRef, {
+        ...command.toMap(),
+        'timestamp': FieldValue.serverTimestamp(),
+        'accepted': true
+      });
+      transaction.update(roomRef, {
+        'playbackState': result.state.toMap(),
+        'queue': result.queue,
+        'currentTrack': result.currentTrack,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (command.type == PlaybackCommandType.setShuffle ||
+          command.type == PlaybackCommandType.setRepeat) {
+        final key = command.type == PlaybackCommandType.setShuffle
+            ? 'shuffle'
+            : 'repeat';
+        transaction.update(roomRef, {'settings.$key': command.enabled});
+      }
+    });
+  }
+
+  @override
+  Future<void> submitPlaybackCheckpoint(
+      String roomId, String userId, int positionMs) async {
+    final roomRef = _rooms.doc(roomId);
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(roomRef);
+      if (!snapshot.exists) return;
+      final state = ListeningRoom.fromSnapshot(snapshot).playbackState;
+      transaction.update(roomRef, {
+        'playbackState.positionMs': positionMs.clamp(0, 0x7fffffff),
+        'playbackState.serverTimestamp': FieldValue.serverTimestamp(),
+        'playbackState.revision': state.revision,
+      });
+    });
+  }
+
+  @override
   Future<void> leave(String roomId, String userId) async {
     final roomRef = _rooms.doc(roomId);
     await _firestore.runTransaction((transaction) async {
@@ -234,4 +299,3 @@ DateTime? _timestamp(Object? value) {
   if (value is DateTime) return value;
   return null;
 }
-

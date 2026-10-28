@@ -5,8 +5,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../../providers/auth_state_notifier.dart';
 import '../../../theme/app_colors.dart';
+import '../../../theme/app_tokens.dart';
 import '../models/room_models.dart';
 import '../providers/room_providers.dart';
+import '../playback/listening_room_screen.dart';
 
 class RoomPage extends ConsumerStatefulWidget {
   const RoomPage({super.key, required this.roomId});
@@ -67,13 +69,13 @@ class _RoomPageState extends ConsumerState<RoomPage>
                     const Icon(Icons.people_outline_rounded, size: 52),
                     const SizedBox(height: 16),
                     Text(full
-                        ? 'This room is full'
-                        : 'We couldn’t join this room'),
+                        ? 'This room is already vibing'
+                        : 'We couldn’t settle into this room yet'),
                     const SizedBox(height: 8),
                     Text(
                         full
-                            ? 'VYBE rooms are made for two people. Ask your friend to leave space and try again.'
-                            : _enterError!,
+                            ? 'It has two people listening already. Try another room or ask your friend to share a spot.'
+                            : 'Your connection is taking a moment. Try again in a little while.',
                         textAlign: TextAlign.center),
                     const SizedBox(height: 24),
                     FilledButton(
@@ -100,8 +102,12 @@ class _RoomPageState extends ConsumerState<RoomPage>
                 .where((p) => p.connected)
                 .toList();
             if (connected.length >= 2) {
-              return _ListeningRoomView(
-                  room: room, participants: connected, onLeave: () => _leave());
+              final currentUser = ref.read(authStateProvider).valueOrNull;
+              return ListeningRoomScreen(
+                  room: room,
+                  participants: connected,
+                  userId: currentUser?.id ?? '',
+                  onLeave: () => _leave());
             }
             return _RoomLobby(
                 room: room,
@@ -197,73 +203,6 @@ class _RoomLobby extends StatelessWidget {
   }
 }
 
-class _ListeningRoomView extends StatelessWidget {
-  const _ListeningRoomView(
-      {required this.room, required this.participants, required this.onLeave});
-  final ListeningRoom room;
-  final List<RoomParticipant> participants;
-  final VoidCallback onLeave;
-  @override
-  Widget build(BuildContext context) => _RoomScaffold(
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        const Icon(Icons.favorite_rounded,
-            color: AppColors.secondary, size: 48),
-        const SizedBox(height: 20),
-        Text('You’re both here.',
-            style: Theme.of(context)
-                .textTheme
-                .headlineMedium
-                ?.copyWith(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 8),
-        Text('Room ${room.code}',
-            style: Theme.of(context)
-                .textTheme
-                .bodyLarge
-                ?.copyWith(color: AppColors.muted)),
-        const SizedBox(height: 36),
-        Wrap(
-            alignment: WrapAlignment.center,
-            spacing: 24,
-            children: participants
-                .map((p) => Column(children: [
-                      CircleAvatar(
-                          radius: 34,
-                          backgroundColor: AppColors.secondary,
-                          child: Text(
-                              p.displayName.substring(0, 1).toUpperCase(),
-                              style: const TextStyle(fontSize: 28))),
-                      const SizedBox(height: 10),
-                      Text(p.displayName),
-                      const SizedBox(height: 4),
-                      const Text('Connected',
-                          style: TextStyle(color: AppColors.secondary))
-                    ]))
-                .toList()),
-        const SizedBox(height: 42),
-        Container(
-            padding: const EdgeInsets.all(24),
-            constraints: const BoxConstraints(maxWidth: 460),
-            decoration: BoxDecoration(
-                color: AppColors.elevatedSurface,
-                borderRadius: BorderRadius.circular(24)),
-            child: const Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.music_note_rounded, size: 36),
-              SizedBox(width: 16),
-              Expanded(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text('Nothing playing yet',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    Text('Add the first track to get the vibe going',
-                        overflow: TextOverflow.ellipsis)
-                  ]))
-            ])),
-        const SizedBox(height: 24),
-        TextButton(onPressed: onLeave, child: const Text('Leave room')),
-      ]));
-}
-
 class _TwoPersonVisual extends StatefulWidget {
   const _TwoPersonVisual();
   @override
@@ -276,9 +215,8 @@ class _TwoPersonVisualState extends State<_TwoPersonVisual>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(seconds: 3))
-          ..repeat(reverse: true);
+    _controller = AnimationController(vsync: this, duration: AppMotion.pulse)
+      ..repeat(reverse: true);
   }
 
   @override
@@ -288,41 +226,82 @@ class _TwoPersonVisualState extends State<_TwoPersonVisual>
   }
 
   @override
-  Widget build(BuildContext context) => AnimatedBuilder(
-      animation: _controller,
-      builder: (_, __) => Transform.translate(
-          offset: Offset(0, -3 * _controller.value),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const CircleAvatar(
-                radius: 43,
-                backgroundColor: AppColors.elevatedSurface,
-                child: Icon(Icons.person_rounded, size: 46)),
-            const SizedBox(width: 18),
-            Container(
-                width: 24,
-                height: 24,
-                decoration: const BoxDecoration(
-                    shape: BoxShape.circle, color: AppColors.secondary),
-                child: const Icon(Icons.favorite, size: 14)),
-            const SizedBox(width: 18),
-            const CircleAvatar(
-                radius: 43,
-                backgroundColor: AppColors.elevatedSurface,
-                child: Icon(Icons.person_outline_rounded, size: 46))
-          ])));
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context) && _controller.isAnimating) {
+      _controller.stop();
+    }
+    return AnimatedBuilder(
+        animation: _controller,
+        builder: (_, __) => Transform.translate(
+            offset: Offset(0, -3 * _controller.value),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              const CircleAvatar(
+                  radius: 43,
+                  backgroundColor: AppColors.elevatedSurface,
+                  child: Icon(Icons.person_rounded, size: 46)),
+              const SizedBox(width: 18),
+              Container(
+                  width: 24,
+                  height: 24,
+                  decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: AppColors.secondary),
+                  child: const Icon(Icons.favorite, size: 14)),
+              const SizedBox(width: 18),
+              const CircleAvatar(
+                  radius: 43,
+                  backgroundColor: AppColors.elevatedSurface,
+                  child: Icon(Icons.person_outline_rounded, size: 46))
+            ])));
+  }
 }
 
 class _RoomScaffold extends StatelessWidget {
   const _RoomScaffold({required this.child});
   final Widget child;
   @override
-  Widget build(BuildContext context) => SafeArea(
-      child: Center(
-          child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 36),
-              child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 620),
-                  child: child))));
+  Widget build(BuildContext context) => Scaffold(
+      backgroundColor: AppColors.background,
+      body: Stack(children: [
+        const DecoratedBox(
+            position: DecorationPosition.background,
+            decoration:
+                BoxDecoration(gradient: AppDecorations.backgroundGradient),
+            child: SizedBox.expand()),
+        Positioned(
+            top: -160,
+            right: -120,
+            child: Container(
+                width: 420,
+                height: 420,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.16),
+                ))),
+        Positioned(
+            bottom: -180,
+            left: -140,
+            child: Container(
+                width: 380,
+                height: 380,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.accent.withValues(alpha: 0.08),
+                ))),
+        SafeArea(
+            child: Center(
+                child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg, vertical: AppSpacing.xl),
+                    child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 620),
+                        child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                                vertical: AppSpacing.xl),
+                            decoration:
+                                AppDecorations.glass(radius: AppRadii.xl),
+                            child: child))))),
+      ]));
 }
 
 class _MissingRoom extends StatelessWidget {

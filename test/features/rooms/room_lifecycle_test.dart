@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:vybe/features/rooms/models/room_models.dart';
 import 'package:vybe/features/rooms/repositories/room_repository.dart';
 import 'package:vybe/features/rooms/services/room_service.dart';
+import 'package:vybe/features/rooms/playback/playback_command.dart';
 
 void main() {
   test('room codes are six characters and human-friendly', () {
@@ -113,6 +114,12 @@ class _LifecycleRepository implements RoomRepository {
 
   @override
   Future<void> leave(String roomId, String userId) async {}
+
+  @override
+  Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command) async {}
+
+  @override
+  Future<void> submitPlaybackCheckpoint(String roomId, String userId, int positionMs) async {}
 
   ListeningRoom _room({String id = 'room-id', String code = 'VYBE42'}) {
     final now = DateTime.now();

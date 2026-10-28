@@ -97,7 +97,7 @@ class _JoinRoomPageState extends ConsumerState<JoinRoomPage> {
         setState(() => _error = error is RoomFullException
             ? error.toString()
             : error is RoomNotFoundException
-                ? 'We couldn’t find a room with that code.'
+                ? 'That room is resting quietly. Check the code and try once more.'
                 : error.toString());
       }
     }
@@ -146,9 +146,11 @@ class _JoinRoomPageState extends ConsumerState<JoinRoomPage> {
                             if (_error != null)
                               Text(_error!,
                                   textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                      color:
-                                          Theme.of(context).colorScheme.error)),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                          color: AppColors.textSecondary)),
                             const SizedBox(height: 18),
                             FilledButton(
                                 onPressed: _loading ? null : _join,

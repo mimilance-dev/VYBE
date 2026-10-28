@@ -25,7 +25,11 @@ class AuthPageFrame extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [const _AuthBrand(), const SizedBox(height: 32), child],
+                    children: [
+                      const _AuthBrand(),
+                      const SizedBox(height: 32),
+                      child
+                    ],
                   ),
                 ),
               ),
@@ -50,7 +54,8 @@ class _AuthBrand extends StatelessWidget {
           height: 52,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            gradient: const LinearGradient(colors: AppColors.violetMagentaGradient),
+            gradient:
+                const LinearGradient(colors: AppColors.violetMagentaGradient),
             boxShadow: [
               BoxShadow(
                 color: AppColors.accent.withValues(alpha: 0.3),
@@ -58,7 +63,8 @@ class _AuthBrand extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 29),
+          child: const Icon(Icons.graphic_eq_rounded,
+              color: Colors.white, size: 29),
         ),
         const SizedBox(width: 14),
         Text(
@@ -149,15 +155,18 @@ String authErrorMessage(Object error) {
   final code = error is FirebaseAuthException ? error.code : '';
   return switch (code) {
     'configuration-not-found' =>
-      'Sign-in is not set up yet. Please try again later.',
+      'Sign-in isn’t ready just yet. Give it another moment.',
     'invalid-email' => 'That email address does not look right.',
-    'user-not-found' || 'wrong-password' || 'invalid-credential' =>
+    'user-not-found' ||
+    'wrong-password' ||
+    'invalid-credential' =>
       'Those sign-in details did not match. Try again.',
     'email-already-in-use' => 'An account already uses that email.',
     'weak-password' => 'Choose a password with at least 6 characters.',
     'popup-closed-by-user' => 'The sign-in window was closed before finishing.',
-    'network-request-failed' => 'Connection issue. Check your internet and retry.',
-    _ => 'Something went wrong. Please try again.',
+    'network-request-failed' =>
+      'Your connection is taking a moment. Try again when it feels ready.',
+    _ => 'We couldn’t sign you in. Try again.',
   };
 }
 
