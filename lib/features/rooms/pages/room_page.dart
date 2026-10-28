@@ -57,7 +57,9 @@ class _RoomPageState extends ConsumerState<RoomPage>
 
   @override
   Widget build(BuildContext context) {
-    final service = ref.watch(roomServiceProvider);
+    final roomAsync = ref.watch(roomStreamProvider(widget.roomId));
+    final participantsAsync =
+        ref.watch(roomParticipantsStreamProvider(widget.roomId));
     if (_enterError != null) {
       final full = _enterError!.contains('full') ||
           _enterError!.contains('This room is full');
@@ -84,40 +86,31 @@ class _RoomPageState extends ConsumerState<RoomPage>
                   ]))));
     }
     return Scaffold(
-        body: StreamBuilder<ListeningRoom?>(
-      stream: service.watch(widget.roomId),
-      builder: (context, roomSnapshot) {
-        final room = roomSnapshot.data;
-        if (roomSnapshot.connectionState == ConnectionState.waiting &&
-            room == null) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (room == null) {
-          return const _MissingRoom();
-        }
-        return StreamBuilder<List<RoomParticipant>>(
-          stream: service.watchParticipants(widget.roomId),
-          builder: (context, participantSnapshot) {
-            final connected = (participantSnapshot.data ?? const [])
-                .where((p) => p.connected)
-                .toList();
-            if (connected.length >= 2) {
-              final currentUser = ref.read(authStateProvider).valueOrNull;
-              return ListeningRoomScreen(
-                  room: room,
-                  participants: connected,
-                  userId: currentUser?.id ?? '',
-                  onLeave: () => _leave());
-            }
-            return _RoomLobby(
+      body: roomAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (_, __) => const _MissingRoom(),
+        data: (room) {
+          if (room == null) return const _MissingRoom();
+          final connected = participantsAsync.valueOrNull
+                  ?.where((participant) => participant.connected)
+                  .toList(growable: false) ??
+              const <RoomParticipant>[];
+          if (connected.length >= 2) {
+            final currentUser = ref.read(authStateProvider).valueOrNull;
+            return ListeningRoomScreen(
                 room: room,
                 participants: connected,
-                onInvite: () => _invite(context, room),
-                onLeave: () => _leave());
-          },
-        );
-      },
-    ));
+                userId: currentUser?.id ?? '',
+                onLeave: _leave);
+          }
+          return _RoomLobby(
+              room: room,
+              participants: connected,
+              onInvite: () => _invite(context, room),
+              onLeave: _leave);
+        },
+      ),
+    );
   }
 
   Future<void> _invite(BuildContext context, ListeningRoom room) async {

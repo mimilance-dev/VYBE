@@ -8,10 +8,33 @@ import 'core/config/app_environment.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final firebaseOptions = AppEnvironment.firebaseOptions;
-  if (firebaseOptions != null) {
-    await Firebase.initializeApp(options: firebaseOptions);
-  }
+  runApp(const ProviderScope(child: _FirebaseBootstrap(child: VybeApp())));
+}
 
-  runApp(const ProviderScope(child: VybeApp()));
+class _FirebaseBootstrap extends StatelessWidget {
+  const _FirebaseBootstrap({required this.child});
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<void>(
+      future: _initializeFirebase(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Directionality(
+            textDirection: TextDirection.ltr,
+            child:
+                ColoredBox(color: Color(0xFF05030A), child: SizedBox.expand()),
+          );
+        }
+        return child;
+      },
+    );
+  }
+}
+
+Future<void> _initializeFirebase() async {
+  final firebaseOptions = AppEnvironment.firebaseOptions;
+  if (firebaseOptions == null || Firebase.apps.isNotEmpty) return;
+  await Firebase.initializeApp(options: firebaseOptions);
 }

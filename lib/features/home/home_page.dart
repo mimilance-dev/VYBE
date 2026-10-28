@@ -743,12 +743,12 @@ class _RecentSections extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final recentRooms = const _EmptySection(
+    const recentRooms = _EmptySection(
       title: 'Recent rooms',
       subtitle: 'Your listening rooms will live here.',
       icon: Icons.headphones_rounded,
     );
-    final recentlyPlayed = const _EmptySection(
+    const recentlyPlayed = _EmptySection(
       title: 'Recently played',
       subtitle: 'Your shared tracks will find a home here.',
       icon: Icons.album_rounded,
@@ -770,10 +770,10 @@ class _RecentSections extends StatelessWidget {
           const SizedBox(height: 12),
           recentlyPlayed,
         ] else
-          Row(
+          const Row(
             children: [
               Expanded(child: recentRooms),
-              const SizedBox(width: 16),
+              SizedBox(width: 16),
               Expanded(child: recentlyPlayed),
             ],
           ),

@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +10,7 @@ import '../models/room_models.dart';
 import '../repositories/room_repository.dart';
 import '../playback/playback_command.dart';
 import '../services/room_service.dart';
+import '../../../core/music/music_cache.dart';
 import 'room_presence_platform.dart';
 
 class UnconfiguredRoomRepository implements RoomRepository {
@@ -55,17 +57,53 @@ class UnconfiguredRoomRepository implements RoomRepository {
   @override
   Future<void> leave(String roomId, String userId) => Future.error(error);
   @override
-  Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command) => Future.error(error);
+  Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command) =>
+      Future.error(error);
   @override
-  Future<void> submitPlaybackCheckpoint(String roomId, String userId, int positionMs) => Future.error(error);
+  Future<void> submitPlaybackCheckpoint(
+          String roomId, String userId, int positionMs) =>
+      Future.error(error);
 }
 
 final roomRepositoryProvider = Provider<RoomRepository>((ref) =>
     Firebase.apps.isEmpty
         ? UnconfiguredRoomRepository()
-        : FirestoreRoomRepository(FirebaseFirestore.instance));
+        : FirestoreRoomRepository(
+            FirebaseFirestore.instance, FirebaseFunctions.instance));
 final roomServiceProvider = Provider<RoomService>(
     (ref) => RoomService(ref.watch(roomRepositoryProvider)));
+
+final roomStreamProvider = StreamProvider.autoDispose
+    .family<ListeningRoom?, String>(
+        (ref, roomId) => ref.watch(roomServiceProvider).watch(roomId));
+
+final roomPlaybackProvider =
+    Provider.autoDispose.family<RoomPlaybackState?, String>((ref, roomId) {
+  return ref.watch(roomStreamProvider(roomId)).valueOrNull?.playbackState;
+});
+
+final roomQueueProvider = Provider.autoDispose
+    .family<List<Map<String, dynamic>>?, String>((ref, roomId) {
+  return ref.watch(roomStreamProvider(roomId)).valueOrNull?.queue;
+});
+
+final roomMetadataProvider =
+    Provider.autoDispose.family<ListeningRoom?, String>((ref, roomId) {
+  return ref.watch(roomStreamProvider(roomId)).valueOrNull;
+});
+
+final roomParticipantsStreamProvider = StreamProvider.autoDispose
+    .family<List<RoomParticipant>, String>((ref, roomId) =>
+        ref.watch(roomServiceProvider).watchParticipants(roomId));
+
+final connectedParticipantsProvider = Provider.autoDispose
+    .family<List<RoomParticipant>, String>((ref, roomId) =>
+        (ref.watch(roomParticipantsStreamProvider(roomId)).valueOrNull ??
+                const [])
+            .where((participant) => participant.connected)
+            .toList(growable: false));
+
+final musicCacheProvider = Provider<MusicCache>((ref) => MusicCache());
 
 class RoomNotifier extends ChangeNotifier with WidgetsBindingObserver {
   RoomNotifier(this._service, this._roomId, this._userId);

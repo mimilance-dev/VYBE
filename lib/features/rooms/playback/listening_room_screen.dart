@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -481,9 +482,13 @@ class _MainPlayer extends StatelessWidget {
                               ])),
                               child: const Icon(Icons.graphic_eq_rounded,
                                   size: 84, color: AppColors.textPrimary))
-                          : Image.network(art,
+                          : CachedNetworkImage(
+                              imageUrl: art,
                               fit: BoxFit.cover,
-                              errorBuilder: (_, __, ___) => const ColoredBox(
+                              memCacheWidth: 780,
+                              memCacheHeight: 780,
+                              fadeInDuration: Duration.zero,
+                              errorWidget: (_, __, ___) => const ColoredBox(
                                   color: AppColors.artworkDark))))),
           const SizedBox(height: 26),
           Text(title,
@@ -719,22 +724,27 @@ class _Artwork extends StatelessWidget {
               ? const ColoredBox(
                   color: AppColors.artworkViolet,
                   child: Icon(Icons.music_note_rounded))
-              : Image.network(url!,
+              : CachedNetworkImage(
+                  imageUrl: url!,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) =>
+                  memCacheWidth: 160,
+                  memCacheHeight: 160,
+                  fadeInDuration: Duration.zero,
+                  errorWidget: (_, __, ___) =>
                       const ColoredBox(color: AppColors.artworkViolet))));
 }
 
-class TrackSearchSheet extends StatefulWidget {
+class TrackSearchSheet extends ConsumerStatefulWidget {
   const TrackSearchSheet({super.key, required this.onAdd});
   final Future<void> Function(Track) onAdd;
   @override
-  State<TrackSearchSheet> createState() => _TrackSearchSheetState();
+  ConsumerState<TrackSearchSheet> createState() => _TrackSearchSheetState();
 }
 
-class _TrackSearchSheetState extends State<TrackSearchSheet> {
+class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
   final _query = TextEditingController();
   String _provider = 'All';
+  int _visibleCount = 30;
   final _tracks = const [
     Track(
         id: 'midnight-city',
@@ -779,6 +789,11 @@ class _TrackSearchSheetState extends State<TrackSearchSheet> {
           track.provider.name.toLowerCase() == _provider.toLowerCase();
       return matchesQuery && matchesProvider;
     }).toList();
+    if (query.isNotEmpty &&
+        ref.read(musicCacheProvider).search(query) == null) {
+      ref.read(musicCacheProvider).putSearch(query, filtered);
+    }
+    final visibleResults = filtered.take(_visibleCount).toList(growable: false);
     return Container(
         margin: const EdgeInsets.only(top: 36),
         decoration: const BoxDecoration(
@@ -798,7 +813,7 @@ class _TrackSearchSheetState extends State<TrackSearchSheet> {
                   TextField(
                       controller: _query,
                       autofocus: true,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(() => _visibleCount = 30),
                       decoration: InputDecoration(
                           prefixIcon: const Icon(Icons.search_rounded),
                           hintText: 'What do you want to hear?',
@@ -826,9 +841,19 @@ class _TrackSearchSheetState extends State<TrackSearchSheet> {
                               child: Text('No tracks found',
                                   style: TextStyle(color: AppColors.muted)))
                           : ListView.builder(
-                              itemCount: filtered.length,
+                              itemCount: visibleResults.length +
+                                  (visibleResults.length < filtered.length
+                                      ? 1
+                                      : 0),
                               itemBuilder: (_, index) {
-                                final track = filtered[index];
+                                if (index == visibleResults.length) {
+                                  return Center(
+                                      child: TextButton(
+                                          onPressed: () => setState(
+                                              () => _visibleCount += 30),
+                                          child: const Text('Show more')));
+                                }
+                                final track = visibleResults[index];
                                 return ListTile(
                                     contentPadding:
                                         const EdgeInsets.symmetric(vertical: 6),
