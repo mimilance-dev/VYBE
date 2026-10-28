@@ -9,6 +9,8 @@ import '../features/auth/signup_page.dart';
 import '../features/home/home_page.dart';
 import '../features/home/landing_page.dart';
 import '../providers/auth_state_notifier.dart';
+import '../features/rooms/pages/room_entry_page.dart';
+import '../features/rooms/pages/room_page.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _RouterRefreshNotifier();
@@ -21,12 +23,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       final authState = ref.read(authStateProvider);
       final path = state.uri.path;
       final profile = authState.valueOrNull;
-      final isAuthPage = const {'/login', '/signup', '/forgot-password'}
-          .contains(path);
+      final isAuthPage =
+          const {'/login', '/signup', '/forgot-password'}.contains(path);
 
       if (authState.isLoading && path == '/home') return '/auth-loading';
       if (path == '/auth-loading' && authState.isLoading) return null;
-      if (profile == null && path == '/home') {
+      final isProtectedRoom = path == '/room/create' ||
+          path == '/room/join' ||
+          path.startsWith('/room/');
+      if (profile == null && (path == '/home' || isProtectedRoom)) {
         return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
       }
       if (profile != null &&
@@ -37,9 +42,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: '/', name: 'landing', builder: (_, __) => const LandingPage()),
-      GoRoute(path: '/login', name: 'login', builder: (_, __) => const LoginPage()),
-      GoRoute(path: '/signup', name: 'signup', builder: (_, __) => const SignupPage()),
+      GoRoute(
+          path: '/', name: 'landing', builder: (_, __) => const LandingPage()),
+      GoRoute(
+          path: '/login', name: 'login', builder: (_, __) => const LoginPage()),
+      GoRoute(
+          path: '/signup',
+          name: 'signup',
+          builder: (_, __) => const SignupPage()),
       GoRoute(
         path: '/forgot-password',
         name: 'forgot-password',
@@ -50,6 +60,24 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         name: 'authenticated-home',
         builder: (_, __) => const HomePage(),
       ),
+      GoRoute(
+          path: '/room/create',
+          name: 'room-create',
+          builder: (_, __) => const CreateRoomPage()),
+      GoRoute(
+          path: '/room',
+          name: 'room-entry',
+          builder: (_, __) => const JoinRoomPage()),
+      GoRoute(
+          path: '/room/join',
+          name: 'room-join',
+          builder: (context, state) =>
+              JoinRoomPage(code: state.uri.queryParameters['code'])),
+      GoRoute(
+          path: '/room/:roomId',
+          name: 'room',
+          builder: (_, state) =>
+              RoomPage(roomId: state.pathParameters['roomId']!)),
       GoRoute(
         path: '/auth-loading',
         name: 'auth-loading',

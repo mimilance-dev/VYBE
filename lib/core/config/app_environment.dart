@@ -9,6 +9,9 @@ abstract final class AppEnvironment {
       String.fromEnvironment('FIREBASE_PROJECT_ID');
   static const firebaseAuthDomain =
       String.fromEnvironment('FIREBASE_AUTH_DOMAIN');
+  static const spotifyClientId = String.fromEnvironment('SPOTIFY_CLIENT_ID');
+  static const spotifyRedirectUri = String.fromEnvironment('SPOTIFY_REDIRECT_URI');
+
   static const firebaseStorageBucket =
       String.fromEnvironment('FIREBASE_STORAGE_BUCKET');
 

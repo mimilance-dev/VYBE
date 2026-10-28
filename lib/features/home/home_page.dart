@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/utils/responsive_breakpoints.dart';
 import '../../models/user_profile.dart';
@@ -132,15 +133,19 @@ class _HomePageState extends ConsumerState<HomePage>
   void _signOut() => ref.read(authStateProvider.notifier).signOut();
 
   void _showCreateRoom() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => const _RoomInfoDialog(
-        title: 'Create a listening room',
-        message:
-            'Room creation will be ready as soon as listening rooms are connected.',
-        icon: Icons.add_rounded,
-      ),
-    );
+    try {
+      context.go('/room/create');
+    } catch (_) {
+      showDialog<void>(
+        context: context,
+        builder: (context) => const _RoomInfoDialog(
+          title: 'Create a listening room',
+          message:
+              'Room creation will be ready as soon as listening rooms are connected.',
+          icon: Icons.add_rounded,
+        ),
+      );
+    }
   }
 
   void _showJoinRoom() {
@@ -317,7 +322,9 @@ class _NavItem extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 19, color: selected ? AppColors.secondary : AppColors.muted),
+          Icon(icon,
+              size: 19,
+              color: selected ? AppColors.secondary : AppColors.muted),
           const SizedBox(width: 12),
           Text(
             label,
@@ -345,9 +352,11 @@ class _Brand extends StatelessWidget {
           height: 34,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            gradient: const LinearGradient(colors: AppColors.violetMagentaGradient),
+            gradient:
+                const LinearGradient(colors: AppColors.violetMagentaGradient),
           ),
-          child: const Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 20),
+          child: const Icon(Icons.graphic_eq_rounded,
+              color: Colors.white, size: 20),
         ),
         const SizedBox(width: 10),
         Text(
@@ -475,6 +484,7 @@ class _ActionCards extends StatelessWidget {
       colors: AppColors.violetMagentaGradient,
       onTap: onCreateRoom,
       isCreate: true,
+      compact: isMobile,
     );
     final joinCard = _ActionCard(
       title: 'Join a room',
@@ -484,6 +494,7 @@ class _ActionCards extends StatelessWidget {
       colors: const [Color(0xFF252052), Color(0xFF14112A)],
       onTap: onJoinRoom,
       isCreate: false,
+      compact: isMobile,
     );
 
     if (isMobile) {
@@ -496,7 +507,6 @@ class _ActionCards extends StatelessWidget {
       );
     }
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Expanded(child: createCard),
         const SizedBox(width: 18),
@@ -515,6 +525,7 @@ class _ActionCard extends StatefulWidget {
     required this.colors,
     required this.onTap,
     required this.isCreate,
+    this.compact = false,
   });
 
   final String title;
@@ -524,6 +535,7 @@ class _ActionCard extends StatefulWidget {
   final List<Color> colors;
   final VoidCallback onTap;
   final bool isCreate;
+  final bool compact;
 
   @override
   State<_ActionCard> createState() => _ActionCardState();
@@ -559,8 +571,8 @@ class _ActionCardState extends State<_ActionCard> {
             onTap: widget.onTap,
             borderRadius: BorderRadius.circular(24),
             child: Ink(
-              height: 218,
-              padding: const EdgeInsets.all(23),
+              height: widget.compact ? 130 : 242,
+              padding: EdgeInsets.all(widget.compact ? 18 : 23),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -577,30 +589,33 @@ class _ActionCardState extends State<_ActionCard> {
                 ),
                 borderRadius: BorderRadius.circular(24),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: _hovering ? 0.15 : 0.08),
+                  color:
+                      Colors.white.withValues(alpha: _hovering ? 0.15 : 0.08),
                 ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.11),
-                          borderRadius: BorderRadius.circular(14),
+                  if (!widget.compact)
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.11),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child:
+                              Icon(widget.icon, color: Colors.white, size: 23),
                         ),
-                        child: Icon(widget.icon, color: Colors.white, size: 23),
-                      ),
-                      const Spacer(),
-                      if (widget.isCreate)
-                        const _AlbumArtwork()
-                      else
-                        const _RoomCodeArtwork(),
-                    ],
-                  ),
+                        const Spacer(),
+                        if (widget.isCreate)
+                          const _AlbumArtwork()
+                        else
+                          const _RoomCodeArtwork(),
+                      ],
+                    ),
                   const Spacer(),
                   Text(
                     widget.title,
@@ -609,14 +624,16 @@ class _ActionCardState extends State<_ActionCard> {
                           fontWeight: FontWeight.w700,
                         ),
                   ),
-                  const SizedBox(height: 5),
-                  Text(
-                    widget.description,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondary,
-                        ),
-                  ),
-                  const SizedBox(height: 17),
+                  if (!widget.compact) ...[
+                    const SizedBox(height: 5),
+                    Text(
+                      widget.description,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.textSecondary,
+                          ),
+                    ),
+                  ],
+                  SizedBox(height: widget.compact ? 12 : 17),
                   Row(
                     children: [
                       Text(
@@ -660,7 +677,11 @@ class _AlbumArtwork extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [Color(0xFFEB86C7), Color(0xFF7956D8), Color(0xFF18122E)],
+                    colors: [
+                      Color(0xFFEB86C7),
+                      Color(0xFF7956D8),
+                      Color(0xFF18122E)
+                    ],
                   ),
                 ),
               ),
@@ -681,7 +702,8 @@ class _AlbumArtwork extends StatelessWidget {
               ),
             ),
             const Center(
-              child: Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 23),
+              child:
+                  Icon(Icons.graphic_eq_rounded, color: Colors.white, size: 23),
             ),
           ],
         ),
@@ -723,7 +745,7 @@ class _RecentSections extends StatelessWidget {
   Widget build(BuildContext context) {
     final recentRooms = const _EmptySection(
       title: 'Recent rooms',
-      subtitle: 'Rooms you visit will show up here.',
+      subtitle: 'Your listening rooms will live here.',
       icon: Icons.headphones_rounded,
     );
     final recentlyPlayed = const _EmptySection(
@@ -947,7 +969,8 @@ class _MobileNavigation extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: AppColors.background.withValues(alpha: 0.96),
-        border: Border(top: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
+        border: Border(
+            top: BorderSide(color: Colors.white.withValues(alpha: 0.07))),
       ),
       child: SafeArea(
         top: false,
@@ -1059,6 +1082,9 @@ class _JoinRoomDialog extends StatefulWidget {
   State<_JoinRoomDialog> createState() => _JoinRoomDialogState();
 }
 
+String refContextCode(String code) =>
+    code.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9]'), '');
+
 class _JoinRoomDialogState extends State<_JoinRoomDialog> {
   final _codeController = TextEditingController();
   bool _showUnavailableMessage = false;
@@ -1073,7 +1099,8 @@ class _JoinRoomDialogState extends State<_JoinRoomDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppColors.elevatedSurface,
-      icon: const Icon(Icons.headphones_rounded, color: AppColors.secondary, size: 30),
+      icon: const Icon(Icons.headphones_rounded,
+          color: AppColors.secondary, size: 30),
       title: const Text('Join a room'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1121,6 +1148,11 @@ class _JoinRoomDialogState extends State<_JoinRoomDialog> {
       setState(() => _showUnavailableMessage = false);
       return;
     }
-    setState(() => _showUnavailableMessage = true);
+    try {
+      context.go(
+          '/room/join?code=${Uri.encodeComponent(refContextCode(_codeController.text))}');
+    } catch (_) {
+      setState(() => _showUnavailableMessage = true);
+    }
   }
 }
