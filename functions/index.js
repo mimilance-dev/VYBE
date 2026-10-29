@@ -1,8 +1,10 @@
 const {onCall, HttpsError} = require('firebase-functions/v2/https');
-const admin = require('firebase-admin');
-admin.initializeApp();
-const db = admin.firestore();
-const realtimeDb = admin.database();
+const {initializeApp} = require('firebase-admin/app');
+const {getFirestore, FieldValue, Timestamp} = require('firebase-admin/firestore');
+const {getDatabase, ServerValue} = require('firebase-admin/database');
+initializeApp();
+const db = getFirestore();
+const realtimeDb = getDatabase();
 
 function uid(request) {
   if (!request.auth?.uid) throw new HttpsError('unauthenticated', 'Sign in first.');
@@ -52,7 +54,7 @@ async function rateLimit(uidValue, action, max = 30, windowMs = 60000) {
     const reset = typeof data.reset === 'number' ? data.reset : now + windowMs;
     let count = now < reset ? (data.count || 0) : 0;
     if (count >= max) throw new HttpsError('resource-exhausted', 'Please slow down and try again shortly.');
-    tx.set(ref, {count: count + 1, reset: now < reset ? reset : now + windowMs, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+    tx.set(ref, {count: count + 1, reset: now < reset ? reset : now + windowMs, updatedAt: FieldValue.serverTimestamp()});
   });
 }
 exports.createRoom = onCall(async request => {
@@ -70,7 +72,7 @@ exports.createRoom = onCall(async request => {
     const created = await db.runTransaction(async tx => {
       const collision = await tx.get(codeRef);
       if (collision.exists) return false;
-      const now = admin.firestore.FieldValue.serverTimestamp();
+      const now = FieldValue.serverTimestamp();
       tx.set(codeRef, {roomId: roomRef.id, createdAt: now});
       tx.set(roomRef, {
         id: roomRef.id, code, hostId: userId, participants: [userId], createdAt: now, updatedAt: now,
@@ -88,7 +90,7 @@ exports.createRoom = onCall(async request => {
       await Promise.all([
         realtimeDb.ref(`roomMembers/${roomRef.id}/${userId}`).set(true),
         realtimeDb.ref(`presence/${roomRef.id}/${userId}`).set({
-          roomId: roomRef.id, connected: true, connectedAt: admin.database.ServerValue.TIMESTAMP
+          roomId: roomRef.id, connected: true, connectedAt: ServerValue.TIMESTAMP
         })
       ]);
       return {roomId: roomRef.id, code};
@@ -173,9 +175,9 @@ exports.joinRoom = onCall(async request => {
       }
       const participantRef = roomRef.collection('participants').doc(userId);
       const previous = await tx.get(participantRef);
-      const joinedAt = previous.exists ? previous.data().joinedAt : admin.firestore.FieldValue.serverTimestamp();
-      tx.set(participantRef, {userId, displayName, avatarUrl: avatarUrl || null, joinedAt, lastSeenAt: admin.firestore.FieldValue.serverTimestamp(), isOnline: true});
-      tx.update(roomRef, {participants: [...active].slice(0, maxParticipants), updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+      const joinedAt = previous.exists ? previous.data().joinedAt : FieldValue.serverTimestamp();
+      tx.set(participantRef, {userId, displayName, avatarUrl: avatarUrl || null, joinedAt, lastSeenAt: FieldValue.serverTimestamp(), isOnline: true});
+      tx.update(roomRef, {participants: [...active].slice(0, maxParticipants), updatedAt: FieldValue.serverTimestamp()});
     });
   } catch (error) {
     await realtimeDb.ref(`presence/${roomId}/${userId}`).remove();
@@ -184,7 +186,7 @@ exports.joinRoom = onCall(async request => {
   await Promise.all([
     realtimeDb.ref(`roomMembers/${roomId}/${userId}`).set(true),
     realtimeDb.ref(`presence/${roomId}/${userId}`).set({
-      roomId, connected: true, connectedAt: admin.database.ServerValue.TIMESTAMP
+      roomId, connected: true, connectedAt: ServerValue.TIMESTAMP
     })
   ]);
   return {roomId};
@@ -201,9 +203,9 @@ exports.heartbeatRoom = onCall(async request => {
   const userId = uid(request);
   await rateLimit(userId, 'heartbeat', 120);
   const roomRef = await requireParticipant(request.data?.roomId, userId);
-  await roomRef.collection('participants').doc(userId).update({isOnline: true, lastSeenAt: admin.firestore.FieldValue.serverTimestamp()});
+  await roomRef.collection('participants').doc(userId).update({isOnline: true, lastSeenAt: FieldValue.serverTimestamp()});
   await realtimeDb.ref(`presence/${request.data.roomId}/${userId}`).update({
-    roomId: request.data.roomId, connected: true, connectedAt: admin.database.ServerValue.TIMESTAMP
+    roomId: request.data.roomId, connected: true, connectedAt: ServerValue.TIMESTAMP
   });
 });
 
@@ -214,8 +216,8 @@ exports.leaveRoom = onCall(async request => {
   await db.runTransaction(async tx => {
     const snap = await tx.get(roomRef);
     const room = snap.data();
-    tx.update(roomRef, {participants: (room.participants || []).filter(id => id !== userId), updatedAt: admin.firestore.FieldValue.serverTimestamp()});
-    tx.update(roomRef.collection('participants').doc(userId), {isOnline: false, lastSeenAt: admin.firestore.FieldValue.serverTimestamp()});
+    tx.update(roomRef, {participants: (room.participants || []).filter(id => id !== userId), updatedAt: FieldValue.serverTimestamp()});
+    tx.update(roomRef.collection('participants').doc(userId), {isOnline: false, lastSeenAt: FieldValue.serverTimestamp()});
   });
   await Promise.all([
     realtimeDb.ref(`roomMembers/${request.data.roomId}/${userId}`).remove(),
@@ -290,7 +292,7 @@ exports.submitPlaybackCommand = onCall(async request => {
     const queue = [...(room.queue || [])];
     let currentTrack = room.currentTrack || null;
     let nextState = {...state};
-    const serverNow = admin.firestore.Timestamp.now();
+    const serverNow = Timestamp.now();
     const projected = state.isPlaying && state.serverTimestamp?.toMillis ? state.positionMs + Math.max(0, serverNow.toMillis() - state.serverTimestamp.toMillis()) : state.positionMs;
     const revision = state.revision + 1;
     if (type === 'play') { nextState = {...state, isPlaying:true, positionMs:state.positionMs || 0, serverTimestamp:serverNow, revision}; }
@@ -309,8 +311,8 @@ exports.submitPlaybackCommand = onCall(async request => {
       nextState = {...state, isPlaying: state.isPlaying, positionMs: 0, serverTimestamp:serverNow, revision};
     }
     if (type === 'setShuffle' || type === 'setRepeat') room.settings[type === 'setShuffle' ? 'shuffle' : 'repeat'] = command.enabled === true;
-    tx.set(commandRef, {commandId, senderId:userId, timestamp:admin.firestore.FieldValue.serverTimestamp(), revision:command.revision, type, accepted:true});
-    tx.update(roomRef, {playbackState:nextState, queue, currentTrack, settings:room.settings, updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.set(commandRef, {commandId, senderId:userId, timestamp:FieldValue.serverTimestamp(), revision:command.revision, type, accepted:true});
+    tx.update(roomRef, {playbackState:nextState, queue, currentTrack, settings:room.settings, updatedAt:FieldValue.serverTimestamp()});
   });
 });
 
@@ -322,6 +324,6 @@ exports.submitPlaybackCheckpoint = onCall(async request => {
   if (!Number.isInteger(positionMs) || positionMs < 0 || positionMs > 864000000) throw new HttpsError('invalid-argument', 'Invalid position.');
   await db.runTransaction(async tx => {
     const snap = await tx.get(roomRef); const state = snap.data().playbackState || {}; 
-    tx.update(roomRef, {'playbackState.positionMs': positionMs, 'playbackState.serverTimestamp': admin.firestore.FieldValue.serverTimestamp(), 'playbackState.revision': state.revision, updatedAt: admin.firestore.FieldValue.serverTimestamp()});
+    tx.update(roomRef, {'playbackState.positionMs': positionMs, 'playbackState.serverTimestamp': FieldValue.serverTimestamp(), 'playbackState.revision': state.revision, updatedAt: FieldValue.serverTimestamp()});
   });
 });

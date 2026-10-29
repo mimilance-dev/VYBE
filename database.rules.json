@@ -14,9 +14,10 @@
       "$roomId": {
         ".indexOn": ["connectedAt"],
         "$uid": {
-          ".read": "auth != null && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists",
-          ".write": "auth != null && auth.uid === $uid && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists && (!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber() && newData.child('connectedAt').val() > 0 && newData.children.length() <= 3))",
-          ".validate": "!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber())"
+          ".read": "auth != null && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists()",
+          ".write": "auth != null && auth.uid === $uid && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists() && (!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber() && newData.child('connectedAt').val() > 0))",
+          ".validate": "!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber())",
+          "$other": {".validate": "$other === 'roomId' || $other === 'connected' || $other === 'connectedAt'"}
         }
       }
     }
