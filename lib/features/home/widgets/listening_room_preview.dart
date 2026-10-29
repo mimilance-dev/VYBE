@@ -72,7 +72,7 @@ class ListeningRoomPreview extends StatelessWidget {
                 const Spacer(),
                 const VYBEAvatar(
                   initials: 'A',
-                  label: 'Adithya',
+                  label: 'Aditya',
                   color: AppColors.accent,
                   isOnline: true,
                   size: 36,
