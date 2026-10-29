@@ -8,6 +8,7 @@ class UserProfile {
     this.displayName,
     this.email,
     this.photoUrl,
+    this.preferences = const UserPreferences(),
   });
 
   final String id;
@@ -16,6 +17,7 @@ class UserProfile {
   final String? photoUrl;
   final DateTime createdAt;
   final DateTime lastSeenAt;
+  final UserPreferences preferences;
 
   factory UserProfile.fromMap(
     Map<String, dynamic> data, {
@@ -30,6 +32,9 @@ class UserProfile {
       photoUrl: data['photoUrl'] as String?,
       createdAt: _readDate(data['createdAt']) ?? fallbackCreatedAt,
       lastSeenAt: _readDate(data['lastSeenAt']) ?? fallbackLastSeenAt,
+      preferences: UserPreferences.fromMap(
+        (data['preferences'] as Map?)?.cast<String, dynamic>(),
+      ),
     );
   }
 
@@ -38,4 +43,25 @@ class UserProfile {
     if (value is DateTime) return value;
     return null;
   }
+}
+
+class UserPreferences {
+  const UserPreferences({
+    this.notificationsEnabled = true,
+    this.reducedMotion = false,
+  });
+
+  final bool notificationsEnabled;
+  final bool reducedMotion;
+
+  factory UserPreferences.fromMap(Map<String, dynamic>? data) =>
+      UserPreferences(
+        notificationsEnabled: data?['notificationsEnabled'] != false,
+        reducedMotion: data?['reducedMotion'] == true,
+      );
+
+  Map<String, Object?> toMap() => {
+        'notificationsEnabled': notificationsEnabled,
+        'reducedMotion': reducedMotion,
+      };
 }

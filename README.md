@@ -2,6 +2,13 @@
 
 A relaxed space to listen together.
 
+## Firebase data model
+
+The canonical Firestore schema is documented in
+[docs/firestore-schema.md](docs/firestore-schema.md). Room writes are performed by
+trusted Firebase Functions; the Flutter app reads synchronized room state and
+participant presence through Firestore.
+
 ## Music provider architecture and limitations
 
 Room playback is provider-agnostic. VYBE uses common `Track`, `MusicProvider`, and

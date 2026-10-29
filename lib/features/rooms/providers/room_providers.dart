@@ -57,6 +57,8 @@ class UnconfiguredRoomRepository implements RoomRepository {
   @override
   Future<void> leave(String roomId, String userId) => Future.error(error);
   @override
+  Future<void> deleteRoom(String roomId) => Future.error(error);
+  @override
   Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command) =>
       Future.error(error);
   @override

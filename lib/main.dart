@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/widgets.dart';
+import 'firebase_options.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
@@ -7,34 +8,35 @@ import 'core/config/app_environment.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  runApp(const ProviderScope(child: _FirebaseBootstrap(child: VybeApp())));
-}
-
-class _FirebaseBootstrap extends StatelessWidget {
-  const _FirebaseBootstrap({required this.child});
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<void>(
-      future: _initializeFirebase(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState != ConnectionState.done) {
-          return const Directionality(
-            textDirection: TextDirection.ltr,
-            child:
-                ColoredBox(color: Color(0xFF05030A), child: SizedBox.expand()),
-          );
-        }
-        return child;
-      },
+  try {
+    await Firebase.initializeApp(
+      options: AppEnvironment.firebaseOptions ??
+          DefaultFirebaseOptions.currentPlatform,
     );
+    runApp(const ProviderScope(child: VybeApp()));
+  } catch (_) {
+    runApp(const _FirebaseStartupError());
   }
 }
 
-Future<void> _initializeFirebase() async {
-  final firebaseOptions = AppEnvironment.firebaseOptions;
-  if (firebaseOptions == null || Firebase.apps.isNotEmpty) return;
-  await Firebase.initializeApp(options: firebaseOptions);
+class _FirebaseStartupError extends StatelessWidget {
+  const _FirebaseStartupError();
+
+  @override
+  Widget build(BuildContext context) {
+    return const MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: EdgeInsets.all(32),
+            child: Text(
+              'VYBE could not start Firebase services. '
+              'Check the app configuration and try again.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

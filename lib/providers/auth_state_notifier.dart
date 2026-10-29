@@ -52,6 +52,10 @@ class AuthStateNotifier extends StreamNotifier<UserProfile?> {
         ref.read(authRepositoryProvider).signOut,
       );
 
+  Future<void> updatePreferences(UserPreferences preferences) => _perform(
+        () => ref.read(authRepositoryProvider).updatePreferences(preferences),
+      );
+
   Future<void> _perform(Future<void> Function() action) async {
     await action();
   }

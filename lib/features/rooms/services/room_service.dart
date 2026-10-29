@@ -56,6 +56,7 @@ class RoomService {
           avatarUrl: avatarUrl);
   Future<void> leave(String roomId, String userId) =>
       _repository.leave(roomId, userId);
+  Future<void> deleteRoom(String roomId) => _repository.deleteRoom(roomId);
   Future<void> heartbeat(String roomId, String userId) =>
       _repository.heartbeat(roomId, userId);
   Future<void> markOffline(String roomId, String userId) =>

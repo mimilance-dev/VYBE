@@ -1,0 +1,24 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "roomMembers": {
+      "$roomId": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": false
+        }
+      }
+    },
+    "presence": {
+      "$roomId": {
+        ".indexOn": ["connectedAt"],
+        "$uid": {
+          ".read": "auth != null && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists",
+          ".write": "auth != null && auth.uid === $uid && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists && (!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber() && newData.child('connectedAt').val() > 0 && newData.children.length() <= 3))",
+          ".validate": "!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber())"
+        }
+      }
+    }
+  }
+}

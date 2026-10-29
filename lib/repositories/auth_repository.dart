@@ -8,6 +8,8 @@ import '../services/auth_service.dart';
 abstract interface class AuthRepository {
   Stream<UserProfile?> watchUser();
 
+  Future<void> updatePreferences(UserPreferences preferences);
+
   Future<void> signInWithGoogle();
 
   Future<void> signInWithEmail({
@@ -64,6 +66,11 @@ class FirebaseAuthRepository implements AuthRepository {
     if (!existing.exists) {
       profileData['createdAt'] = FieldValue.serverTimestamp();
     }
+    final existingPreferences =
+        (existing.data()?['preferences'] as Map?)?.cast<String, dynamic>() ??
+            const <String, dynamic>{};
+    profileData['preferences'] =
+        UserPreferences.fromMap(existingPreferences).toMap();
 
     await profileRef.set(profileData, SetOptions(merge: true));
     final saved = await profileRef.get();
@@ -73,6 +80,17 @@ class FirebaseAuthRepository implements AuthRepository {
       fallbackCreatedAt: user.metadata.creationTime ?? now,
       fallbackLastSeenAt: now,
     );
+  }
+
+  @override
+  Future<void> updatePreferences(UserPreferences preferences) async {
+    final user = _authService.currentUser;
+    if (user == null) return;
+
+    await _firestore.collection('users').doc(user.uid).set({
+      'preferences': preferences.toMap(),
+      'lastSeenAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   @override
@@ -113,6 +131,10 @@ class UnconfiguredAuthRepository implements AuthRepository {
 
   @override
   Stream<UserProfile?> watchUser() => Stream.value(null);
+
+  @override
+  Future<void> updatePreferences(UserPreferences preferences) =>
+      Future<void>.value();
 
   @override
   Future<void> signInWithGoogle() => Future.error(_error);

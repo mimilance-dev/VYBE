@@ -161,6 +161,9 @@ class FakeAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async => _setUser(null);
 
+  @override
+  Future<void> updatePreferences(UserPreferences preferences) async {}
+
   void _setUser(UserProfile? user) {
     _user = user;
     _changes.add(user);

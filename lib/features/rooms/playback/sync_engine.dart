@@ -74,7 +74,20 @@ class SyncEngine {
       case PlaybackCommandType.clearQueue:
         nextQueue.clear();
       case PlaybackCommandType.next:
+        if (nextQueue.isNotEmpty) {
+          nextTrack = nextQueue.removeAt(0);
+          next = _state(
+              state.copy(
+                  provider: nextTrack['provider'] as String?,
+                  trackId: nextTrack['id'] as String?),
+              state.isPlaying,
+              0,
+              serverTime,
+              revision);
+        }
+        break;
       case PlaybackCommandType.previous:
+        next = _state(state, state.isPlaying, 0, serverTime, revision);
         break;
       case PlaybackCommandType.setShuffle:
       case PlaybackCommandType.setRepeat:

@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_database/firebase_database.dart';
 
 import '../models/room_models.dart';
 import '../playback/playback_command.dart';
@@ -39,6 +42,7 @@ abstract interface class RoomRepository {
   Future<void> heartbeat(String roomId, String userId);
   Future<void> setOffline(String roomId, String userId);
   Future<void> leave(String roomId, String userId);
+  Future<void> deleteRoom(String roomId);
   Future<void> submitPlaybackCommand(String roomId, PlaybackCommand command);
   Future<void> submitPlaybackCheckpoint(
       String roomId, String userId, int positionMs);
@@ -56,6 +60,16 @@ class FirestoreRoomRepository implements RoomRepository {
   CollectionReference<Map<String, dynamic>> get _rooms =>
       _firestore.collection('rooms');
 
+  Future<void> _startPresence(String roomId, String userId) async {
+    final presence = FirebaseDatabase.instance.ref('presence/$roomId/$userId');
+    await presence.onDisconnect().remove();
+    await presence.set({
+      'roomId': roomId,
+      'connected': true,
+      'connectedAt': ServerValue.timestamp,
+    });
+  }
+
   @override
   Future<ListeningRoom> createRoom(
       {required String hostId,
@@ -69,6 +83,7 @@ class FirestoreRoomRepository implements RoomRepository {
       'name': name,
     });
     final roomId = (result.data as Map)['roomId'] as String;
+    await _startPresence(roomId, hostId);
     final saved = await _rooms.doc(roomId).get();
     return ListeningRoom.fromSnapshot(saved);
   }
@@ -86,6 +101,7 @@ class FirestoreRoomRepository implements RoomRepository {
     });
     final saved =
         await _rooms.doc((result.data as Map)['roomId'] as String).get();
+    await _startPresence(roomId, userId);
     return ListeningRoom.fromSnapshot(saved);
   }
 
@@ -102,6 +118,7 @@ class FirestoreRoomRepository implements RoomRepository {
     });
     final saved =
         await _rooms.doc((result.data as Map)['roomId'] as String).get();
+    await _startPresence((result.data as Map)['roomId'] as String, userId);
     return ListeningRoom.fromSnapshot(saved);
   }
 
@@ -127,21 +144,60 @@ class FirestoreRoomRepository implements RoomRepository {
           snapshot.exists ? ListeningRoom.fromSnapshot(snapshot) : null);
 
   @override
-  Stream<List<RoomParticipant>> watchParticipants(String roomId) => _rooms
-      .doc(roomId)
-      .collection('participants')
-      .snapshots()
-      .map((snapshot) => snapshot.docs
+  Stream<List<RoomParticipant>> watchParticipants(String roomId) {
+    final controller = StreamController<List<RoomParticipant>>.broadcast();
+    final firestore = _rooms.doc(roomId).collection('participants');
+    var participants = <RoomParticipant>[];
+    var presence = <String, dynamic>{};
+
+    void emit() {
+      final now = DateTime.now();
+      controller.add(participants.map((participant) {
+        final data = presence[participant.userId];
+        final connectedAt = data is Map ? data['connectedAt'] : null;
+        final connected = data is Map &&
+            data['connected'] == true &&
+            connectedAt is int &&
+            now
+                    .difference(
+                        DateTime.fromMillisecondsSinceEpoch(connectedAt))
+                    .inSeconds <
+                45;
+        return participant.copyWith(
+          lastSeenAt: connectedAt is int
+              ? DateTime.fromMillisecondsSinceEpoch(connectedAt)
+              : participant.lastSeenAt,
+          isOnline: connected,
+        );
+      }).toList(growable: false));
+    }
+
+    final participantSubscription = firestore.snapshots().listen((snapshot) {
+      participants = snapshot.docs
           .map((doc) => RoomParticipant.fromMap(doc.data(), doc.id))
-          .toList());
+          .toList(growable: false);
+      emit();
+    });
+    final presenceSubscription = FirebaseDatabase.instance
+        .ref('presence/$roomId')
+        .onValue
+        .listen((event) {
+      final value = event.snapshot.value;
+      presence = value is Map ? Map<String, dynamic>.from(value) : {};
+      emit();
+    });
+
+    controller.onCancel = () async {
+      await participantSubscription.cancel();
+      await presenceSubscription.cancel();
+      await controller.close();
+    };
+    return controller.stream;
+  }
 
   @override
   Future<void> setOnline(String roomId, RoomParticipant participant) =>
-      _rooms.doc(roomId).collection('participants').doc(participant.userId).set(
-          participant
-              .copyWith(lastSeenAt: DateTime.now(), isOnline: true)
-              .toMap(),
-          SetOptions(merge: true));
+      _trustedFunctions.httpsCallable('heartbeatRoom').call({'roomId': roomId});
 
   @override
   Future<void> heartbeat(String roomId, String userId) =>
@@ -184,5 +240,12 @@ class FirestoreRoomRepository implements RoomRepository {
   @override
   Future<void> leave(String roomId, String userId) async {
     await _trustedFunctions.httpsCallable('leaveRoom').call({'roomId': roomId});
+  }
+
+  @override
+  Future<void> deleteRoom(String roomId) async {
+    await _trustedFunctions
+        .httpsCallable('deleteRoom')
+        .call({'roomId': roomId});
   }
 }

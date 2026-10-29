@@ -9,6 +9,8 @@ class AuthService {
 
   Stream<User?> get authStateChanges => _firebaseAuth.authStateChanges();
 
+  User? get currentUser => _firebaseAuth.currentUser;
+
   Future<void> ensurePersistence() {
     if (!kIsWeb) return Future<void>.value();
     return _persistenceSetup ??=
