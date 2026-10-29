@@ -7,7 +7,7 @@ WARNING: java.lang.System::loadLibrary has been called by io.netty.util.internal
 WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
 WARNING: Restricted methods will be blocked in a future release unless native access is enabled
 
-Oct 29, 2026 9:05:23 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
+Oct 29, 2026 9:42:02 AM com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer start
 INFO: Started WebSocket server on ws://127.0.0.1:9150
 
 API endpoint: http://127.0.0.1:8080
@@ -26,5 +26,5 @@ Note: Support for Datastore Mode is in preview. If you encounter any bugs please
 Dev App Server is now running.
 
 *** shutting down gRPC server since JVM is shutting down
-261029 09:05:24.195:I 3 [main] [com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer.stop:79] Stopping WebSocket server...
+261029 09:42:03.220:I 3 [main] [com.google.cloud.datastore.emulator.firestore.websocket.WebSocketServer.stop:79] Stopping WebSocket server...
 *** server shut down
