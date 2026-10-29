@@ -194,7 +194,7 @@ class _HomePageState extends ConsumerState<HomePage>
 
 String _firstName(String? displayName) {
   final name = displayName?.trim();
-  if (name == null || name.isEmpty) return 'Adithya';
+  if (name == null || name.isEmpty) return 'there';
   return name.split(RegExp(r'\s+')).first;
 }
 

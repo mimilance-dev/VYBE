@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'firebase_options.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +15,7 @@ Future<void> main() async {
           DefaultFirebaseOptions.currentPlatform,
     );
      await FirebaseAppCheck.instance.activate(
-    providerWeb: ReCaptchaEnterpriseProvider(
+    webProvider: ReCaptchaEnterpriseProvider(
       '6LdhcAYuAAAAACoVxCj_Ir5TB247WEmcrzakypfe',
        ),
     );
