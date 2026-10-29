@@ -24,6 +24,7 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   json_annotation: ^4.9.0
   firebase_database: ^11.3.10
+  firebase_app_check: ^0.3.2+10
 
 dev_dependencies:
   flutter_test:

@@ -13,6 +13,11 @@ Future<void> main() async {
       options: AppEnvironment.firebaseOptions ??
           DefaultFirebaseOptions.currentPlatform,
     );
+     await FirebaseAppCheck.instance.activate(
+    providerWeb: ReCaptchaEnterpriseProvider(
+      '6LdhcAYuAAAAACoVxCj_Ir5TB247WEmcrzakypfe',
+       ),
+    );
     runApp(const ProviderScope(child: VybeApp()));
   } catch (_) {
     runApp(const _FirebaseStartupError());
