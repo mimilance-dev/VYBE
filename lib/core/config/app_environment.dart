@@ -7,6 +7,8 @@ abstract final class AppEnvironment {
       String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
   static const firebaseProjectId =
       String.fromEnvironment('FIREBASE_PROJECT_ID');
+  static const firebaseDatabaseUrl =
+      String.fromEnvironment('FIREBASE_DATABASE_URL');
   static const firebaseAuthDomain =
       String.fromEnvironment('FIREBASE_AUTH_DOMAIN');
   static const spotifyClientId = String.fromEnvironment('SPOTIFY_CLIENT_ID');
@@ -23,14 +25,24 @@ abstract final class AppEnvironment {
       return null;
     }
 
-    return FirebaseOptions(
-      apiKey: firebaseApiKey,
-      appId: firebaseAppId,
-      messagingSenderId: firebaseMessagingSenderId,
-      projectId: firebaseProjectId,
-      authDomain: firebaseAuthDomain.isEmpty ? null : firebaseAuthDomain,
-      storageBucket:
-          firebaseStorageBucket.isEmpty ? null : firebaseStorageBucket,
+    return withDatabaseUrl(
+      FirebaseOptions(
+        apiKey: firebaseApiKey,
+        appId: firebaseAppId,
+        messagingSenderId: firebaseMessagingSenderId,
+        projectId: firebaseProjectId,
+        authDomain: firebaseAuthDomain.isEmpty ? null : firebaseAuthDomain,
+        storageBucket:
+            firebaseStorageBucket.isEmpty ? null : firebaseStorageBucket,
+      ),
     );
+  }
+
+  static FirebaseOptions withDatabaseUrl(FirebaseOptions options) {
+    final databaseUrl = firebaseDatabaseUrl.isNotEmpty
+        ? firebaseDatabaseUrl
+        : options.databaseURL ??
+            'https://${options.projectId}-default-rtdb.firebaseio.com';
+    return options.copyWith(databaseURL: databaseUrl);
   }
 }

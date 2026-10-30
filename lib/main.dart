@@ -10,9 +10,10 @@ import 'core/config/app_environment.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
+    final firebaseOptions = AppEnvironment.firebaseOptions ??
+        DefaultFirebaseOptions.currentPlatform;
     await Firebase.initializeApp(
-      options: AppEnvironment.firebaseOptions ??
-          DefaultFirebaseOptions.currentPlatform,
+      options: AppEnvironment.withDatabaseUrl(firebaseOptions),
     );
      await FirebaseAppCheck.instance.activate(
     webProvider: ReCaptchaEnterpriseProvider(

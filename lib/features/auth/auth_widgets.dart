@@ -156,6 +156,8 @@ String authErrorMessage(Object error) {
   return switch (code) {
     'configuration-not-found' =>
       'Sign-in isn’t ready just yet. Give it another moment.',
+    'operation-not-allowed' || 'admin-restricted-operation' =>
+      'Guest sign-in is disabled. Enable Anonymous sign-in in Firebase Authentication settings.',
     'invalid-email' => 'That email address does not look right.',
     'user-not-found' ||
     'wrong-password' ||
@@ -166,7 +168,9 @@ String authErrorMessage(Object error) {
     'popup-closed-by-user' => 'The sign-in window was closed before finishing.',
     'network-request-failed' =>
       'Your connection is taking a moment. Try again when it feels ready.',
-    _ => 'We couldn’t sign you in. Try again.',
+    _ => error is FirebaseAuthException
+        ? 'Sign-in failed (${error.code}). Check Firebase Authentication settings and try again.'
+        : 'We couldn’t sign you in. Try again.',
   };
 }
 

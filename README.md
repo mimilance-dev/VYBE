@@ -9,6 +9,11 @@ The canonical Firestore schema is documented in
 trusted Firebase Functions; the Flutter app reads synchronized room state and
 participant presence through Firestore.
 
+Realtime Database is used for room presence. When overriding Firebase
+compile-time configuration, set `FIREBASE_DATABASE_URL` to the Realtime
+Database URL; if omitted, the app uses the project's default
+`-default-rtdb.firebaseio.com` endpoint.
+
 ## Music provider architecture and limitations
 
 Room playback is provider-agnostic. VYBE uses common `Track`, `MusicProvider`, and
