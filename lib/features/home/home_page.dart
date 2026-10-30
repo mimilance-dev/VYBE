@@ -8,6 +8,7 @@ import '../../providers/auth_state_notifier.dart';
 import '../../theme/app_colors.dart';
 import '../../widgets/vybe_avatar.dart';
 import '../auth/auth_widgets.dart';
+import '../spotify/spotify_connect_card.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -249,6 +250,8 @@ class _MainContent extends StatelessWidget {
                       onCreateRoom: onCreateRoom,
                       onJoinRoom: onJoinRoom,
                     ),
+                    const SizedBox(height: 28),
+                    const SpotifyConnectCard(),
                     const SizedBox(height: 46),
                     _RecentSections(isMobile: isMobile),
                   ],

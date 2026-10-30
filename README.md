@@ -65,7 +65,25 @@ VYBE uses Spotify Authorization Code with PKCE for browser OAuth. Configure only
 these compile-time public values:
 
 - `SPOTIFY_CLIENT_ID`
-- `SPOTIFY_REDIRECT_URI`
+- `SPOTIFY_REDIRECT_URI` (optional; defaults to `<current origin>/spotify-callback`)
+
+Users connect Spotify from the home screen. The app sends them to Spotify, which
+redirects back to `/spotify-callback`; that route (see
+`lib/features/spotify/`) validates the OAuth `state` and exchanges the code with
+the PKCE verifier. Connecting Spotify does not affect Firebase sign-in. The
+callback URL must be registered exactly in the Spotify Developer Dashboard, e.g.
+in GitHub Codespaces:
+
+```sh
+flutter run -d web-server --web-port 8080 --web-hostname 0.0.0.0 \
+  --dart-define=SPOTIFY_CLIENT_ID=<your public client id>
+# Redirect URI: https://8080-<codespace-name>.app.github.dev/spotify-callback
+```
+
+The web app uses path URLs (no `#`) so the callback can carry query parameters.
+Port 8080 must be forwarded in the Codespace; if you change the port, update the
+Dashboard URI. The initial connection requests no scopes; the playback scopes
+below are only needed once playback is implemented.
 
 Never configure a Spotify client secret in a Flutter Web build. Spotify tokens are
 stored in Flutter Secure Storage; browser storage cannot provide hardware-backed

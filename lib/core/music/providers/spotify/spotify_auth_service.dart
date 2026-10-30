@@ -81,6 +81,7 @@ class SpotifyAuthService {
             {'verifier': verifier, 'state': state ?? _secureRandomString(24)}));
     final effectiveState = state ??
         jsonDecode(await storage.read('spotify_pkce') ?? '{}')['state'];
+    final scope = (scopes ?? defaultScopes.split(' ')).join(' ');
     return Uri.parse(authorizationEndpoint).replace(queryParameters: {
       'client_id': clientId,
       'response_type': 'code',
@@ -88,7 +89,7 @@ class SpotifyAuthService {
       'code_challenge_method': 'S256',
       'code_challenge': challenge,
       'state': effectiveState as String,
-      'scope': (scopes ?? defaultScopes.split(' ')).join(' '),
+      if (scope.isNotEmpty) 'scope': scope,
     });
   }
 

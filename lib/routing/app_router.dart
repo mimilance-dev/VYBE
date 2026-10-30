@@ -11,6 +11,8 @@ import '../features/home/landing_page.dart';
 import '../providers/auth_state_notifier.dart';
 import '../features/rooms/pages/room_entry_page.dart';
 import '../features/rooms/pages/room_page.dart';
+import '../features/spotify/spotify_callback_page.dart';
+import '../features/spotify/spotify_connection.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final refreshNotifier = _RouterRefreshNotifier();
@@ -78,6 +80,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           name: 'room',
           builder: (_, state) =>
               RoomPage(roomId: state.pathParameters['roomId']!)),
+      GoRoute(
+        path: spotifyCallbackPath,
+        name: 'spotify-callback',
+        builder: (_, state) => SpotifyCallbackPage(
+          code: state.uri.queryParameters['code'],
+          state: state.uri.queryParameters['state'],
+          error: state.uri.queryParameters['error'],
+        ),
+      ),
       GoRoute(
         path: '/auth-loading',
         name: 'auth-loading',
