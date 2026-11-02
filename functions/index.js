@@ -213,6 +213,12 @@ exports.leaveRoom = onCall(async request => {
   const userId = uid(request);
   await rateLimit(userId, 'leave', 60);
   const roomRef = await requireParticipant(request.data?.roomId, userId);
+  if (request.data?.offline === true) {
+    // Backgrounded tab: show as offline but keep membership so the user can resume.
+    await roomRef.collection('participants').doc(userId).update({isOnline: false, lastSeenAt: FieldValue.serverTimestamp()});
+    await realtimeDb.ref(`presence/${request.data.roomId}/${userId}`).remove();
+    return;
+  }
   await db.runTransaction(async tx => {
     const snap = await tx.get(roomRef);
     const room = snap.data();

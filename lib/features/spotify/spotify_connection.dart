@@ -2,7 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/config/app_environment.dart';
+import '../../core/music/providers/spotify/spotify_api_client.dart';
 import '../../core/music/providers/spotify/spotify_auth_service.dart';
+import '../../core/music/providers/spotify/spotify_music_provider.dart';
 import '../../core/music/providers/spotify/spotify_secure_storage.dart';
 
 const spotifyCallbackPath = '/spotify-callback';
@@ -29,6 +31,15 @@ final spotifyAuthServiceProvider = Provider<SpotifyAuthService>(
     redirectUri: resolveSpotifyRedirectUri(),
     storage: SpotifySecureStorage(),
   ),
+);
+
+final spotifyApiClientProvider = Provider<SpotifyApiClient>(
+  (ref) => SpotifyApiClient(ref.watch(spotifyAuthServiceProvider)),
+);
+
+/// Metadata/search only; playback capabilities are intentionally not enabled.
+final spotifyMusicProviderProvider = Provider<SpotifyMusicProvider>(
+  (ref) => SpotifyMusicProvider(api: ref.watch(spotifyApiClientProvider)),
 );
 
 /// Navigates the browser to Spotify in the same tab so the redirect returns

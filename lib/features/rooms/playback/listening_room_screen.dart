@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +9,7 @@ import '../../../core/music/models/music_models.dart';
 import '../../../core/music/widgets/provider_badge.dart';
 import '../../../theme/app_colors.dart';
 import '../../../theme/app_tokens.dart';
+import '../../spotify/spotify_connection.dart';
 import '../models/room_models.dart';
 import '../providers/room_providers.dart';
 import 'playback_command.dart';
@@ -745,15 +748,13 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
   final _query = TextEditingController();
   String _provider = 'All';
   int _visibleCount = 30;
-  final _tracks = const [
-    Track(
-        id: 'midnight-city',
-        provider: MusicProviderId.spotify,
-        title: 'Midnight City',
-        artist: 'M83',
-        album: Album(id: 'hurry-up', title: "Hurry Up, We're Dreaming"),
-        durationMs: 244000,
-        externalUrl: 'https://open.spotify.com/track/midnight-city'),
+  Timer? _debounce;
+  List<Track> _spotifyResults = const [];
+  bool _searching = false;
+  String? _spotifyError;
+  int _searchId = 0;
+  // Placeholder until YouTube search is wired up.
+  final _youtubeSamples = const [
     Track(
         id: 'dandelions',
         provider: MusicProviderId.youtube,
@@ -762,18 +763,66 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
         album: Album(id: 'safe-haven', title: 'Safe Haven'),
         durationMs: 223000,
         externalUrl: 'https://youtube.com/watch?v=dandelions'),
-    Track(
-        id: 'electric-feel',
-        provider: MusicProviderId.spotify,
-        title: 'Electric Feel',
-        artist: 'MGMT',
-        album: Album(id: 'oracular', title: 'Oracular Spectacular'),
-        durationMs: 229000,
-        externalUrl: 'https://open.spotify.com/track/electric-feel'),
   ];
+
+  void _onQueryChanged() {
+    setState(() => _visibleCount = 30);
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _searchSpotify);
+  }
+
+  Future<void> _searchSpotify() async {
+    final query = _query.text.trim();
+    final id = ++_searchId;
+    if (query.isEmpty || _provider == 'YouTube') {
+      setState(() {
+        _spotifyResults = const [];
+        _searching = false;
+        _spotifyError = null;
+      });
+      return;
+    }
+    if (!(ref.read(spotifyConnectionProvider).valueOrNull ?? false)) {
+      setState(() {
+        _spotifyResults = const [];
+        _spotifyError = 'Connect Spotify from the home screen to search it.';
+      });
+      return;
+    }
+    final cacheKey = 'spotify:$query';
+    final cached = ref.read(musicCacheProvider).search(cacheKey);
+    if (cached != null) {
+      setState(() {
+        _spotifyResults = cached;
+        _spotifyError = null;
+      });
+      return;
+    }
+    setState(() {
+      _searching = true;
+      _spotifyError = null;
+    });
+    try {
+      final results = await ref.read(spotifyMusicProviderProvider).search(query);
+      ref.read(musicCacheProvider).putSearch(cacheKey, results);
+      if (!mounted || id != _searchId) return;
+      setState(() {
+        _spotifyResults = results;
+        _searching = false;
+      });
+    } catch (error) {
+      if (!mounted || id != _searchId) return;
+      setState(() {
+        _spotifyResults = const [];
+        _searching = false;
+        _spotifyError = 'Spotify search failed: $error';
+      });
+    }
+  }
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _query.dispose();
     super.dispose();
   }
@@ -781,18 +830,16 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
   @override
   Widget build(BuildContext context) {
     final query = _query.text.toLowerCase();
-    final filtered = _tracks.where((track) {
-      final matchesQuery = query.isEmpty ||
-          track.title.toLowerCase().contains(query) ||
-          track.artist.toLowerCase().contains(query);
-      final matchesProvider = _provider == 'All' ||
-          track.provider.name.toLowerCase() == _provider.toLowerCase();
-      return matchesQuery && matchesProvider;
-    }).toList();
-    if (query.isNotEmpty &&
-        ref.read(musicCacheProvider).search(query) == null) {
-      ref.read(musicCacheProvider).putSearch(query, filtered);
-    }
+    final youtube = _provider == 'Spotify'
+        ? const <Track>[]
+        : _youtubeSamples.where((track) =>
+            query.isNotEmpty &&
+            (track.title.toLowerCase().contains(query) ||
+                track.artist.toLowerCase().contains(query)));
+    final filtered = [
+      if (_provider != 'YouTube') ..._spotifyResults,
+      ...youtube,
+    ];
     final visibleResults = filtered.take(_visibleCount).toList(growable: false);
     return Container(
         margin: const EdgeInsets.only(top: 36),
@@ -813,7 +860,7 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
                   TextField(
                       controller: _query,
                       autofocus: true,
-                      onChanged: (_) => setState(() => _visibleCount = 30),
+                      onChanged: (_) => _onQueryChanged(),
                       decoration: InputDecoration(
                           prefixIcon: const Icon(Icons.search_rounded),
                           hintText: 'What do you want to hear?',
@@ -832,14 +879,24 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
                       selected: {
                         _provider
                       },
-                      onSelectionChanged: (values) =>
-                          setState(() => _provider = values.first)),
+                      onSelectionChanged: (values) {
+                        setState(() => _provider = values.first);
+                        _searchSpotify();
+                      }),
                   const SizedBox(height: 12),
                   Expanded(
                       child: filtered.isEmpty
-                          ? const Center(
-                              child: Text('No tracks found',
-                                  style: TextStyle(color: AppColors.muted)))
+                          ? Center(
+                              child: _searching
+                                  ? const CircularProgressIndicator()
+                                  : Text(
+                                      _spotifyError ??
+                                          (query.isEmpty
+                                              ? 'Search for a song'
+                                              : 'No tracks found'),
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                          color: AppColors.muted)))
                           : ListView.builder(
                               itemCount: visibleResults.length +
                                   (visibleResults.length < filtered.length
