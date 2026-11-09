@@ -5,6 +5,8 @@ import 'dart:js';
 import 'dart:async';
 import 'youtube_iframe_bridge_stub.dart';
 
+export 'youtube_iframe_bridge_stub.dart' show YouTubeIframeBridge;
+
 YouTubeIframeBridge createYouTubeIframeBridge() => WebYouTubeIframeBridge();
 
 class WebYouTubeIframeBridge implements YouTubeIframeBridge {
@@ -17,7 +19,9 @@ class WebYouTubeIframeBridge implements YouTubeIframeBridge {
         ..src = 'https://www.youtube.com/iframe_api'
         ..async = true;
       document.head?.append(script);
-      for (var i = 0; i < 100 && context['YT'] == null; i++) {
+      for (var i = 0;
+          i < 200 && (context['YT'] == null || context['YT']['Player'] == null);
+          i++) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
       }
     }
@@ -28,9 +32,20 @@ class WebYouTubeIframeBridge implements YouTubeIframeBridge {
     _player = JsObject(context['YT']['Player'] as JsFunction, [
       elementId,
       JsObject.jsify({
-        'height': '360',
-        'width': '640',
-        'events': {'onReady': (JsObject _) => ready.complete()}
+        'height': '390',
+        'width': '390',
+        'playerVars': {
+          'autoplay': 0,
+          'controls': 1,
+          'playsinline': 1,
+          'rel': 0,
+          'origin': Uri.base.origin,
+        },
+        'events': {
+          'onReady': (JsObject _) {
+            if (!ready.isCompleted) ready.complete();
+          }
+        }
       }),
     ]);
     return ready.future.timeout(const Duration(seconds: 15));
@@ -60,4 +75,9 @@ class WebYouTubeIframeBridge implements YouTubeIframeBridge {
               .round());
   @override
   Future<bool> playing() async => _player?.callMethod('getPlayerState') == 1;
+  @override
+  Future<void> dispose() async {
+    _player?.callMethod('destroy');
+    _player = null;
+  }
 }

@@ -34,6 +34,7 @@ void main() {
     expect(uri.queryParameters['code_challenge_method'], 'S256');
     expect(uri.queryParameters['code_challenge'], isNotEmpty);
     expect(uri.queryParameters['client_id'], 'public-client-id');
+    expect(uri.queryParameters['scope']!.split(' '), contains('streaming'));
     expect(uri.queryParameters, isNot(contains('client_secret')));
   });
 
@@ -101,13 +102,13 @@ void main() {
       () async {
     final storage = MemorySpotifyStorage();
     await storage.write('spotify_tokens',
-        '{"accessToken":"expired","refreshToken":"refresh-value","expiresAt":"${DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()}","scope":"user-modify-playback-state"}');
+        '{"accessToken":"expired","refreshToken":"refresh-value","expiresAt":"${DateTime.now().subtract(const Duration(hours: 1)).toIso8601String()}","scope":"user-modify-playback-state streaming"}');
     final auth = SpotifyAuthService(
       clientId: 'public-client-id',
       redirectUri: 'https://example.test/callback',
       storage: storage,
       httpClient: MockClient((request) async => http.Response(
-            '{"access_token":"fresh","expires_in":3600,"scope":"user-modify-playback-state"}',
+            '{"access_token":"fresh","expires_in":3600}',
             200,
             headers: {'content-type': 'application/json'},
           )),
@@ -115,6 +116,7 @@ void main() {
     expect(await auth.validAccessToken(), 'fresh');
     final refreshed = await auth.loadTokens();
     expect(refreshed?.refreshToken, 'refresh-value');
+    expect(refreshed?.scope, 'user-modify-playback-state streaming');
   });
 
   test('Spotify sign out clears browser and OAuth state', () async {

@@ -15,8 +15,14 @@ class YouTubePlaybackController implements MusicPlaybackController {
   final YouTubeIframeBridge _bridge;
   final List<String> _queue = [];
   int _queueIndex = 0;
+  String? _trackId;
 
   Future<void> initialize(String elementId) => _bridge.initialize(elementId);
+  Future<void> dispose() async {
+    _trackId = null;
+    await _bridge.dispose();
+  }
+
   Future<void> setQueue(List<Track> tracks) async {
     _queue
       ..clear()
@@ -26,8 +32,11 @@ class YouTubePlaybackController implements MusicPlaybackController {
 
   @override
   Future<void> play(Track track) async {
-    await _bridge.loadVideo(track.id, Duration.zero);
-    await _bridge.play();
+    if (_trackId != track.id) {
+      await _bridge.loadVideo(track.id, Duration.zero);
+      _trackId = track.id;
+    }
+    if (!await _bridge.playing()) await _bridge.play();
   }
 
   @override

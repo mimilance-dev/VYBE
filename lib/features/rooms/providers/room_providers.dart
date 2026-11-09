@@ -6,6 +6,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_environment.dart';
+import '../../../core/music/providers/youtube/youtube_search_service.dart';
 import '../models/room_models.dart';
 import '../repositories/room_repository.dart';
 import '../playback/playback_command.dart';
@@ -106,6 +108,8 @@ final connectedParticipantsProvider = Provider.autoDispose
             .toList(growable: false));
 
 final musicCacheProvider = Provider<MusicCache>((ref) => MusicCache());
+final youtubeSearchServiceProvider = Provider<YouTubeSearchService>(
+    (ref) => YouTubeSearchService(AppEnvironment.youtubeApiKey));
 
 class RoomNotifier extends ChangeNotifier with WidgetsBindingObserver {
   RoomNotifier(this._service, this._roomId, this._userId);

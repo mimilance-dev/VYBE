@@ -9,6 +9,7 @@ abstract class YouTubeIframeBridge {
   Future<void> previous();
   Future<Duration> position();
   Future<bool> playing();
+  Future<void> dispose();
 }
 
 YouTubeIframeBridge createYouTubeIframeBridge() => _UnsupportedBridge();
@@ -37,4 +38,6 @@ class _UnsupportedBridge implements YouTubeIframeBridge {
   Future<Duration> position() async => Duration.zero;
   @override
   Future<bool> playing() async => false;
+  @override
+  Future<void> dispose() async {}
 }

@@ -37,7 +37,7 @@ final spotifyApiClientProvider = Provider<SpotifyApiClient>(
   (ref) => SpotifyApiClient(ref.watch(spotifyAuthServiceProvider)),
 );
 
-/// Metadata/search only; playback capabilities are intentionally not enabled.
+/// Spotify metadata and search are provided separately from browser playback.
 final spotifyMusicProviderProvider = Provider<SpotifyMusicProvider>(
   (ref) => SpotifyMusicProvider(api: ref.watch(spotifyApiClientProvider)),
 );
@@ -68,8 +68,8 @@ class SpotifyConnectionNotifier extends AsyncNotifier<bool> {
 
   Future<void> connect() async {
     final auth = ref.read(spotifyAuthServiceProvider);
-    // No scopes yet: playback permissions are requested when playback ships.
-    final uri = await auth.createAuthorizationUri(scopes: const []);
+    final uri = await auth.createAuthorizationUri(
+        scopes: SpotifyAuthService.defaultScopes.split(' '));
     final opened = await ref.read(spotifyAuthorizationLauncherProvider)(uri);
     if (!opened) {
       throw const SpotifyAuthException('Could not open Spotify.');

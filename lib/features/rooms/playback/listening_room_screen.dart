@@ -2,9 +2,12 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/music/providers/spotify/spotify_web_playback_controller.dart';
+import '../../../core/music/providers/youtube/youtube_playback_controller.dart';
 import '../../../core/music/models/music_models.dart';
 import '../../../core/music/widgets/provider_badge.dart';
 import '../../../theme/app_colors.dart';
@@ -13,6 +16,8 @@ import '../../spotify/spotify_connection.dart';
 import '../models/room_models.dart';
 import '../providers/room_providers.dart';
 import 'playback_command.dart';
+import 'sync_engine.dart';
+import 'youtube_player_surface.dart';
 
 class ListeningRoomScreen extends ConsumerStatefulWidget {
   const ListeningRoomScreen(
@@ -39,15 +44,201 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
   bool _repeat = false;
   double _volume = 0.72;
   String? _activity;
+  Timer? _progressTimer;
+  late final String _youtubeViewType;
+  late final YouTubePlaybackController _youtubePlayback;
+  SpotifyWebPlaybackController? _spotifyPlayback;
+  bool _youtubeReady = false;
+  bool _youtubeInitializing = false;
+  bool _spotifyReady = false;
+  bool _spotifyInitializing = false;
 
   @override
   void initState() {
     super.initState();
     _pulse = AnimationController(vsync: this, duration: AppMotion.pulse);
+    _youtubeViewType =
+        'vybe-youtube-${widget.room.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
+    _youtubePlayback = YouTubePlaybackController();
+    _updateProgressTimer();
+    if (kIsWeb) unawaited(_initializeSpotifyPlayback());
+  }
+
+  @override
+  void didUpdateWidget(covariant ListeningRoomScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.room.playbackState.isPlaying !=
+        widget.room.playbackState.isPlaying) {
+      _updateProgressTimer();
+    }
+    if (oldWidget.room.currentTrack?['id'] != widget.room.currentTrack?['id'] ||
+        oldWidget.room.playbackState.revision !=
+            widget.room.playbackState.revision) {
+      unawaited(_syncRoomPlayback(oldWidget.room));
+    }
+  }
+
+  Future<void> _initializeYouTube(int _) async {
+    if (_youtubeReady || _youtubeInitializing) return;
+    _youtubeInitializing = true;
+    try {
+      await _youtubePlayback.initialize(_youtubeViewType);
+      _youtubeReady = true;
+      await _syncRoomPlayback(widget.room);
+    } catch (error) {
+      _showPlaybackError('YouTube player failed to start: $error');
+    } finally {
+      _youtubeInitializing = false;
+    }
+  }
+
+  Future<void> _initializeSpotifyPlayback() async {
+    if (_spotifyReady || _spotifyInitializing) return;
+    _spotifyInitializing = true;
+    try {
+      final auth = ref.read(spotifyAuthServiceProvider);
+      final tokens = await auth.loadTokens();
+      if (tokens == null) return;
+      const requiredScopes = {
+        'streaming',
+        'user-modify-playback-state',
+        'user-read-playback-state',
+      };
+      if (!requiredScopes.every(tokens.scope.split(' ').contains)) {
+        throw StateError(
+            'Reconnect Spotify to grant browser playback permissions.');
+      }
+      final controller =
+          SpotifyWebPlaybackController(ref.read(spotifyApiClientProvider));
+      _spotifyPlayback = controller;
+      await controller.initialize(auth.validAccessToken);
+      _spotifyReady = true;
+      await _syncRoomPlayback(widget.room);
+    } catch (error) {
+      _showPlaybackError('Spotify player failed to start: $error');
+    } finally {
+      _spotifyInitializing = false;
+    }
+  }
+
+  Future<void> _syncRoomPlayback(ListeningRoom previousRoom) async {
+    final oldTrack = previousRoom.currentTrack;
+    final track = widget.room.currentTrack;
+    final oldProvider = _providerFor(oldTrack);
+    final provider = _providerFor(track);
+    final trackChanged =
+        oldProvider != provider || oldTrack?['id'] != track?['id'];
+    final stopped = previousRoom.playbackState.isPlaying &&
+        !widget.room.playbackState.isPlaying;
+    if (trackChanged || stopped) {
+      await _pauseProvider(oldProvider);
+    }
+    if (oldProvider == MusicProviderId.youtube &&
+        provider != MusicProviderId.youtube) {
+      await _youtubePlayback.dispose();
+      _youtubeReady = false;
+    }
+    if (track == null) return;
+    try {
+      final oldPosition = const SyncEngine()
+          .projectedPosition(previousRoom.playbackState, DateTime.now());
+      final newPosition = const SyncEngine()
+          .projectedPosition(widget.room.playbackState, DateTime.now());
+      final seekChanged =
+          !trackChanged && (newPosition - oldPosition).abs() > 1000;
+      if (seekChanged) {
+        await _seekProvider(provider, Duration(milliseconds: newPosition));
+      } else if (widget.room.playbackState.isPlaying) {
+        await _playProvider(_trackFromRoom(track));
+      }
+    } catch (error) {
+      _showPlaybackError('$provider playback failed: $error');
+    }
+  }
+
+  MusicProviderId? _providerFor(Map<String, dynamic>? track) =>
+      switch (track?['provider']) {
+        'spotify' => MusicProviderId.spotify,
+        'youtube' => MusicProviderId.youtube,
+        _ => null,
+      };
+
+  Track _trackFromRoom(Map<String, dynamic> data) {
+    final provider = _providerFor(data);
+    if (provider == null) {
+      throw StateError('The selected track has no provider.');
+    }
+    final id = data['id'] as String?;
+    if (id == null || id.isEmpty) {
+      throw StateError('The selected track has no ID.');
+    }
+    return Track(
+      id: id,
+      provider: provider,
+      title: data['title'] as String? ?? 'Unknown track',
+      artist: data['artist'] as String? ?? '',
+      albumArtUrl: data['albumArtUrl'] as String?,
+      durationMs: (data['durationMs'] as num?)?.toInt() ?? 0,
+      externalUrl: data['externalUrl'] as String? ??
+          (provider == MusicProviderId.spotify
+              ? 'https://open.spotify.com/track/$id'
+              : 'https://www.youtube.com/watch?v=$id'),
+    );
+  }
+
+  Future<void> _playProvider(Track track) async {
+    if (track.provider == MusicProviderId.youtube) {
+      if (!_youtubeReady) throw StateError('YouTube player is still loading.');
+      await _youtubePlayback.play(track);
+    } else {
+      if (!_spotifyReady) {
+        await _initializeSpotifyPlayback();
+      }
+      final controller = _spotifyPlayback;
+      if (controller == null || !_spotifyReady) {
+        throw StateError('Connect Spotify and allow browser playback first.');
+      }
+      await controller.play(track);
+    }
+  }
+
+  Future<void> _pauseProvider(MusicProviderId? provider) async {
+    if (provider == MusicProviderId.youtube && _youtubeReady) {
+      await _youtubePlayback.pause();
+    } else if (provider == MusicProviderId.spotify && _spotifyReady) {
+      await _spotifyPlayback?.pause();
+    }
+  }
+
+  Future<void> _runPlayback(Future<void> Function() operation) async {
+    try {
+      await operation();
+    } catch (error) {
+      _showPlaybackError('$error');
+    }
+  }
+
+  void _showPlaybackError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _updateProgressTimer() {
+    _progressTimer?.cancel();
+    if (widget.room.playbackState.isPlaying) {
+      _progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
   }
 
   @override
   void dispose() {
+    _progressTimer?.cancel();
+    unawaited(_youtubePlayback.dispose());
+    final spotifyPlayback = _spotifyPlayback;
+    if (spotifyPlayback != null) unawaited(spotifyPlayback.dispose());
     _pulse.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -184,12 +375,80 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
     }
   }
 
-  void _togglePlayback() => _send(widget.room.playbackState.isPlaying
-      ? PlaybackCommandType.pause
-      : PlaybackCommandType.play);
-  void _seek(int seconds) => _send(PlaybackCommandType.seek,
-      positionMs: (widget.room.playbackState.positionMs + seconds * 1000)
-          .clamp(0, 1 << 31));
+  Future<void> _togglePlayback() async {
+    final track = widget.room.currentTrack;
+    if (track == null) {
+      _showPlaybackError('Add a track before starting playback.');
+      return;
+    }
+    if (widget.room.playbackState.isPlaying) {
+      try {
+        await _pauseProvider(_providerFor(track));
+      } catch (error) {
+        _showPlaybackError('$error');
+      }
+      await _send(PlaybackCommandType.pause);
+    } else {
+      try {
+        await _playProvider(_trackFromRoom(track));
+      } catch (error) {
+        _showPlaybackError('$error');
+        return;
+      }
+      await _send(PlaybackCommandType.play);
+    }
+  }
+
+  void _seek(int seconds) {
+    final position = const SyncEngine()
+        .projectedPosition(widget.room.playbackState, DateTime.now());
+    _seekTo(position + seconds * 1000);
+  }
+
+  void _seekTo(int positionMs) {
+    final durationMs =
+        (widget.room.currentTrack?['durationMs'] as num?)?.toInt() ?? 0;
+    final maximum = durationMs > 0 ? durationMs : 1 << 31;
+    final position = positionMs.clamp(0, maximum).toInt();
+    final track = widget.room.currentTrack;
+    if (track == null) return;
+    unawaited(_seekAndSend(track, position));
+  }
+
+  Future<void> _seekAndSend(Map<String, dynamic> track, int position) async {
+    try {
+      await _seekProvider(
+          _providerFor(track), Duration(milliseconds: position));
+    } catch (error) {
+      _showPlaybackError('$error');
+      return;
+    }
+    await _send(PlaybackCommandType.seek, positionMs: position);
+  }
+
+  Future<void> _seekProvider(
+      MusicProviderId? provider, Duration position) async {
+    if (provider == MusicProviderId.youtube) {
+      if (!_youtubeReady) throw StateError('YouTube player is still loading.');
+      await _youtubePlayback.seek(position);
+    } else if (provider == MusicProviderId.spotify) {
+      if (!_spotifyReady) {
+        throw StateError('Connect Spotify to seek this track.');
+      }
+      await _spotifyPlayback!.seek(position);
+    }
+  }
+
+  void _setVolume(double value) {
+    setState(() => _volume = value);
+    final provider = _providerFor(widget.room.currentTrack);
+    if (provider == MusicProviderId.youtube && _youtubeReady) {
+      unawaited(_runPlayback(
+          () => _youtubePlayback.setVolume((value * 100).round())));
+    } else if (provider == MusicProviderId.spotify && _spotifyReady) {
+      unawaited(_runPlayback(() => _spotifyPlayback!.setVolume(value)));
+    }
+  }
 
   Widget _wideLayout(double width) {
     final queueWidth = width >= 1180 ? 340.0 : 300.0;
@@ -202,8 +461,11 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
                       child: _MainPlayer(
                           pulse: _pulse,
                           room: widget.room,
+                          youtubeViewType: _youtubeViewType,
+                          onYoutubeViewCreated: _initializeYouTube,
                           onPlayPause: _togglePlayback,
                           onSeek: _seek,
+                          onSeekTo: _seekTo,
                           onPrevious: () => _send(PlaybackCommandType.previous),
                           onNext: () => _send(PlaybackCommandType.next),
                           shuffle: _shuffle,
@@ -211,7 +473,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
                           volume: _volume,
                           onShuffle: () => setState(() => _shuffle = !_shuffle),
                           onRepeat: () => setState(() => _repeat = !_repeat),
-                          onVolume: (value) => setState(() => _volume = value),
+                          onVolume: _setVolume,
                           onQueue: _showSearch)))),
           const SizedBox(width: 28),
           SizedBox(
@@ -231,8 +493,11 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
                 child: _MainPlayer(
                     pulse: _pulse,
                     room: widget.room,
+                    youtubeViewType: _youtubeViewType,
+                    onYoutubeViewCreated: _initializeYouTube,
                     onPlayPause: _togglePlayback,
                     onSeek: _seek,
+                    onSeekTo: _seekTo,
                     onPrevious: () => _send(PlaybackCommandType.previous),
                     onNext: () => _send(PlaybackCommandType.next),
                     shuffle: _shuffle,
@@ -240,7 +505,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
                     volume: _volume,
                     onShuffle: () => setState(() => _shuffle = !_shuffle),
                     onRepeat: () => setState(() => _repeat = !_repeat),
-                    onVolume: (value) => setState(() => _volume = value),
+                    onVolume: _setVolume,
                     onQueue: _showQueueSheet))),
         Container(
             decoration: const BoxDecoration(
@@ -300,7 +565,12 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
       'durationMs': track.durationMs,
       'externalUrl': track.externalUrl
     };
-    await _send(PlaybackCommandType.addToQueue, queueItem: item);
+    if (widget.room.currentTrack == null) {
+      await _send(PlaybackCommandType.setTrack,
+          queueItem: item, trackId: track.id, provider: track.provider.name);
+    } else {
+      await _send(PlaybackCommandType.addToQueue, queueItem: item);
+    }
     if (!mounted) return;
     setState(() {
       _activity = '${_nameForSelf()} added ${track.title}';
@@ -420,8 +690,11 @@ class _MainPlayer extends StatelessWidget {
   const _MainPlayer(
       {required this.pulse,
       required this.room,
+      required this.youtubeViewType,
+      required this.onYoutubeViewCreated,
       required this.onPlayPause,
       required this.onSeek,
+      required this.onSeekTo,
       required this.onPrevious,
       required this.onNext,
       required this.shuffle,
@@ -433,6 +706,8 @@ class _MainPlayer extends StatelessWidget {
       required this.onQueue});
   final Animation<double> pulse;
   final ListeningRoom room;
+  final String youtubeViewType;
+  final ValueChanged<int> onYoutubeViewCreated;
   final VoidCallback onPlayPause,
       onPrevious,
       onNext,
@@ -440,6 +715,7 @@ class _MainPlayer extends StatelessWidget {
       onRepeat,
       onQueue;
   final void Function(int seconds) onSeek;
+  final ValueChanged<int> onSeekTo;
   final void Function(double) onVolume;
   final bool shuffle, repeat;
   final double volume;
@@ -451,8 +727,12 @@ class _MainPlayer extends StatelessWidget {
     final artist = track?['artist'] as String? ?? 'Choose a track to begin';
     final album = track?['album'] as String? ?? '—';
     final art = track?['albumArtUrl'] as String?;
-    final position = room.playbackState.positionMs;
     final duration = (track?['durationMs'] as num?)?.toInt() ?? 0;
+    final projectedPosition = const SyncEngine()
+        .projectedPosition(room.playbackState, DateTime.now());
+    final position = duration > 0
+        ? projectedPosition.clamp(0, duration).toInt()
+        : projectedPosition;
     return ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 620),
         child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -476,23 +756,27 @@ class _MainPlayer extends StatelessWidget {
                   aspectRatio: 1,
                   child: ClipRRect(
                       borderRadius: BorderRadius.circular(AppRadii.xl),
-                      child: art == null
-                          ? Container(
-                              decoration: const BoxDecoration(
-                                  gradient: LinearGradient(colors: [
-                                AppColors.artworkViolet,
-                                AppColors.artworkDark
-                              ])),
-                              child: const Icon(Icons.graphic_eq_rounded,
-                                  size: 84, color: AppColors.textPrimary))
-                          : CachedNetworkImage(
-                              imageUrl: art,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 780,
-                              memCacheHeight: 780,
-                              fadeInDuration: Duration.zero,
-                              errorWidget: (_, __, ___) => const ColoredBox(
-                                  color: AppColors.artworkDark))))),
+                      child: track?['provider'] == 'youtube'
+                          ? YouTubePlayerSurface(
+                              viewType: youtubeViewType,
+                              onCreated: onYoutubeViewCreated)
+                          : art == null
+                              ? Container(
+                                  decoration: const BoxDecoration(
+                                      gradient: LinearGradient(colors: [
+                                    AppColors.artworkViolet,
+                                    AppColors.artworkDark
+                                  ])),
+                                  child: const Icon(Icons.graphic_eq_rounded,
+                                      size: 84, color: AppColors.textPrimary))
+                              : CachedNetworkImage(
+                                  imageUrl: art,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: 780,
+                                  memCacheHeight: 780,
+                                  fadeInDuration: Duration.zero,
+                                  errorWidget: (_, __, ___) => const ColoredBox(
+                                      color: AppColors.artworkDark))))),
           const SizedBox(height: 26),
           Text(title,
               textAlign: TextAlign.center,
@@ -512,13 +796,10 @@ class _MainPlayer extends StatelessWidget {
                 style:
                     const TextStyle(fontSize: 12, color: AppColors.textMuted)),
             Expanded(
-                child: Slider(
-                    value: duration == 0
-                        ? 0
-                        : (position / duration).clamp(0, 1).toDouble(),
-                    onChanged: (_) {},
-                    activeColor: AppColors.secondary,
-                    inactiveColor: Colors.white12)),
+                child: _ProgressSlider(
+                    durationMs: duration,
+                    positionMs: position,
+                    onSeekTo: onSeekTo)),
             Text(duration == 0 ? '--:--' : _clock(duration),
                 style:
                     const TextStyle(fontSize: 12, color: AppColors.textMuted)),
@@ -585,6 +866,47 @@ class _MainPlayer extends StatelessWidget {
   String _clock(int ms) {
     final seconds = ms ~/ 1000;
     return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
+  }
+}
+
+class _ProgressSlider extends StatefulWidget {
+  const _ProgressSlider(
+      {required this.durationMs,
+      required this.positionMs,
+      required this.onSeekTo});
+  final int durationMs;
+  final int positionMs;
+  final ValueChanged<int> onSeekTo;
+
+  @override
+  State<_ProgressSlider> createState() => _ProgressSliderState();
+}
+
+class _ProgressSliderState extends State<_ProgressSlider> {
+  double? _scrubValue;
+
+  @override
+  Widget build(BuildContext context) {
+    final duration = widget.durationMs;
+    final value = duration > 0
+        ? (_scrubValue ?? widget.positionMs.toDouble())
+            .clamp(0, duration.toDouble())
+            .toDouble()
+        : 0.0;
+    return Slider(
+        value: duration > 0 ? value / duration : 0,
+        onChanged: duration > 0
+            ? (fraction) =>
+                setState(() => _scrubValue = fraction * duration.toDouble())
+            : null,
+        onChangeEnd: duration > 0
+            ? (fraction) {
+                widget.onSeekTo((fraction * duration).round());
+                setState(() => _scrubValue = null);
+              }
+            : null,
+        activeColor: AppColors.secondary,
+        inactiveColor: Colors.white12);
   }
 }
 
@@ -750,73 +1072,125 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
   int _visibleCount = 30;
   Timer? _debounce;
   List<Track> _spotifyResults = const [];
+  List<Track> _youtubeResults = const [];
   bool _searching = false;
   String? _spotifyError;
+  String? _youtubeError;
   int _searchId = 0;
-  // Placeholder until YouTube search is wired up.
-  final _youtubeSamples = const [
-    Track(
-        id: 'dandelions',
-        provider: MusicProviderId.youtube,
-        title: 'Dandelions',
-        artist: 'Ruth B.',
-        album: Album(id: 'safe-haven', title: 'Safe Haven'),
-        durationMs: 223000,
-        externalUrl: 'https://youtube.com/watch?v=dandelions'),
-  ];
 
   void _onQueryChanged() {
     setState(() => _visibleCount = 30);
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), _searchSpotify);
+    _debounce = Timer(const Duration(milliseconds: 400), _search);
   }
 
-  Future<void> _searchSpotify() async {
+  Future<void> _search() async {
     final query = _query.text.trim();
     final id = ++_searchId;
-    if (query.isEmpty || _provider == 'YouTube') {
+    if (query.isEmpty) {
       setState(() {
         _spotifyResults = const [];
+        _youtubeResults = const [];
         _searching = false;
         _spotifyError = null;
-      });
-      return;
-    }
-    if (!(ref.read(spotifyConnectionProvider).valueOrNull ?? false)) {
-      setState(() {
-        _spotifyResults = const [];
-        _spotifyError = 'Connect Spotify from the home screen to search it.';
-      });
-      return;
-    }
-    final cacheKey = 'spotify:$query';
-    final cached = ref.read(musicCacheProvider).search(cacheKey);
-    if (cached != null) {
-      setState(() {
-        _spotifyResults = cached;
-        _spotifyError = null;
+        _youtubeError = null;
       });
       return;
     }
     setState(() {
       _searching = true;
-      _spotifyError = null;
     });
-    try {
-      final results = await ref.read(spotifyMusicProviderProvider).search(query);
-      ref.read(musicCacheProvider).putSearch(cacheKey, results);
-      if (!mounted || id != _searchId) return;
-      setState(() {
-        _spotifyResults = results;
-        _searching = false;
-      });
-    } catch (error) {
-      if (!mounted || id != _searchId) return;
+    final searches = <Future<void>>[];
+    if (_provider != 'YouTube') {
+      searches.add(_searchSpotify(query, id));
+    } else {
       setState(() {
         _spotifyResults = const [];
-        _searching = false;
-        _spotifyError = 'Spotify search failed: $error';
+        _spotifyError = null;
       });
+    }
+    if (_provider != 'Spotify') {
+      searches.add(_searchYouTube(query, id));
+    } else {
+      setState(() {
+        _youtubeResults = const [];
+        _youtubeError = null;
+      });
+    }
+    await Future.wait(searches);
+    if (mounted && id == _searchId) setState(() => _searching = false);
+  }
+
+  Future<void> _searchSpotify(String query, int id) async {
+    if (!(ref.read(spotifyConnectionProvider).valueOrNull ?? false)) {
+      if (mounted && id == _searchId) {
+        setState(() {
+          _spotifyResults = const [];
+          _spotifyError = 'Connect Spotify from the home screen to search it.';
+        });
+      }
+      return;
+    }
+    final cacheKey = 'spotify:$query';
+    final cached = ref.read(musicCacheProvider).search(cacheKey);
+    if (cached != null) {
+      if (mounted && id == _searchId) {
+        setState(() {
+          _spotifyResults = cached;
+          _spotifyError = null;
+        });
+      }
+      return;
+    }
+    try {
+      final results =
+          await ref.read(spotifyMusicProviderProvider).search(query);
+      ref.read(musicCacheProvider).putSearch(cacheKey, results);
+      if (mounted && id == _searchId) {
+        setState(() {
+          _spotifyResults = results;
+          _spotifyError = null;
+        });
+      }
+    } catch (error) {
+      if (mounted && id == _searchId) {
+        setState(() {
+          _spotifyResults = const [];
+          _spotifyError = 'Spotify search failed: $error';
+        });
+      }
+    }
+  }
+
+  Future<void> _searchYouTube(String query, int id) async {
+    final cacheKey = 'youtube:$query';
+    final cached = ref.read(musicCacheProvider).search(cacheKey);
+    if (cached != null) {
+      if (mounted && id == _searchId) {
+        setState(() {
+          _youtubeResults = cached;
+          _youtubeError = null;
+        });
+      }
+      return;
+    }
+    try {
+      final results =
+          await ref.read(youtubeSearchServiceProvider).search(query);
+      ref.read(musicCacheProvider).putSearch(cacheKey, results);
+      if (mounted && id == _searchId) {
+        setState(() {
+          _youtubeResults = results;
+          _youtubeError = null;
+        });
+      }
+    } catch (error) {
+      if (mounted && id == _searchId) {
+        setState(() {
+          _youtubeResults = const [];
+          _youtubeError = 'YouTube search failed: $error';
+        });
+      }
     }
   }
 
@@ -829,17 +1203,15 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final query = _query.text.toLowerCase();
-    final youtube = _provider == 'Spotify'
-        ? const <Track>[]
-        : _youtubeSamples.where((track) =>
-            query.isNotEmpty &&
-            (track.title.toLowerCase().contains(query) ||
-                track.artist.toLowerCase().contains(query)));
     final filtered = [
       if (_provider != 'YouTube') ..._spotifyResults,
-      ...youtube,
+      if (_provider != 'Spotify') ..._youtubeResults,
     ];
+    final query = _query.text.toLowerCase();
+    final searchError = [
+      if (_provider != 'YouTube' && _spotifyError != null) _spotifyError,
+      if (_provider != 'Spotify' && _youtubeError != null) _youtubeError,
+    ].join('\n');
     final visibleResults = filtered.take(_visibleCount).toList(growable: false);
     return Container(
         margin: const EdgeInsets.only(top: 36),
@@ -881,7 +1253,7 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
                       },
                       onSelectionChanged: (values) {
                         setState(() => _provider = values.first);
-                        _searchSpotify();
+                        _search();
                       }),
                   const SizedBox(height: 12),
                   Expanded(
@@ -890,7 +1262,9 @@ class _TrackSearchSheetState extends ConsumerState<TrackSearchSheet> {
                               child: _searching
                                   ? const CircularProgressIndicator()
                                   : Text(
-                                      _spotifyError ??
+                                      (searchError.isNotEmpty
+                                              ? searchError
+                                              : null) ??
                                           (query.isEmpty
                                               ? 'Search for a song'
                                               : 'No tracks found'),

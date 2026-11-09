@@ -28,7 +28,7 @@ void main() {
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(1440, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
-    final now = DateTime.utc(2026);
+    final now = DateTime.now();
     final room = ListeningRoom(
       id: 'room',
       code: 'ABC123',
@@ -45,7 +45,7 @@ void main() {
       playbackState: RoomPlaybackState(
           provider: 'spotify',
           trackId: 'midnight-city',
-          isPlaying: false,
+          isPlaying: true,
           positionMs: 42000,
           serverTimestamp: now,
           revision: 2),
@@ -79,8 +79,13 @@ void main() {
     await tester.pump();
     expect(find.text('Midnight City'), findsOneWidget);
     expect(find.text('Up next'), findsOneWidget);
+    final progress = tester.widget<Slider>(find.byType(Slider).first).value;
+    await tester.pump(const Duration(seconds: 3));
+    expect(tester.widget<Slider>(find.byType(Slider).first).value,
+        greaterThan(progress));
     await tester.tap(find.byTooltip('Queue').first);
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('What do you want to hear?'), findsOneWidget);
   });
 }

@@ -156,7 +156,7 @@ class SpotifyAuthService {
         accessToken: result.accessToken,
         refreshToken: result.refreshToken ?? previous?.refreshToken,
         expiresAt: result.expiresAt,
-        scope: result.scope);
+        scope: result.scope.isEmpty ? previous?.scope ?? '' : result.scope);
     await storage.write('spotify_tokens', jsonEncode(combined.toJson()));
     return combined;
   }
