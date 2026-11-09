@@ -61,7 +61,7 @@ void main() {
       addTearDown(container.dispose);
     });
 
-    test('connect launches a PKCE request without scopes or secrets',
+    test('connect launches a PKCE request with playback scopes and no secrets',
         () async {
       await container.read(spotifyConnectionProvider.future);
       await container.read(spotifyConnectionProvider.notifier).connect();
@@ -70,7 +70,9 @@ void main() {
       expect(launched!.host, 'accounts.spotify.com');
       expect(params['redirect_uri'], 'https://example.test/spotify-callback');
       expect(params['code_challenge_method'], 'S256');
-      expect(params, isNot(contains('scope')));
+      expect(params['scope']!.split(' '),
+          containsAll(SpotifyAuthService.defaultScopes.split(' ')));
+      expect(params['show_dialog'], 'true');
       expect(params, isNot(contains('client_secret')));
     });
 
@@ -105,8 +107,8 @@ void main() {
         container
             .read(spotifyConnectionProvider.notifier)
             .completeAuthorization(error: 'access_denied'),
-        throwsA(isA<SpotifyAuthException>().having(
-            (e) => e.message, 'message', contains('cancelled'))),
+        throwsA(isA<SpotifyAuthException>()
+            .having((e) => e.message, 'message', contains('cancelled'))),
       );
     });
 

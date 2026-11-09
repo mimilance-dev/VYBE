@@ -49,9 +49,10 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
   late final YouTubePlaybackController _youtubePlayback;
   SpotifyWebPlaybackController? _spotifyPlayback;
   bool _youtubeReady = false;
-  bool _youtubeInitializing = false;
+  Future<void>? _youtubeInitialization;
+  int? _youtubeViewId;
   bool _spotifyReady = false;
-  bool _spotifyInitializing = false;
+  Future<void>? _spotifyInitialization;
 
   @override
   void initState() {
@@ -61,7 +62,10 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
         'vybe-youtube-${widget.room.id.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_')}';
     _youtubePlayback = YouTubePlaybackController();
     _updateProgressTimer();
-    if (kIsWeb) unawaited(_initializeSpotifyPlayback());
+    if (kIsWeb &&
+        _providerFor(widget.room.currentTrack) == MusicProviderId.spotify) {
+      unawaited(_runPlayback(_initializeSpotifyPlayback));
+    }
   }
 
   @override
@@ -76,49 +80,74 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
             widget.room.playbackState.revision) {
       unawaited(_syncRoomPlayback(oldWidget.room));
     }
-  }
-
-  Future<void> _initializeYouTube(int _) async {
-    if (_youtubeReady || _youtubeInitializing) return;
-    _youtubeInitializing = true;
-    try {
-      await _youtubePlayback.initialize(_youtubeViewType);
-      _youtubeReady = true;
-      await _syncRoomPlayback(widget.room);
-    } catch (error) {
-      _showPlaybackError('YouTube player failed to start: $error');
-    } finally {
-      _youtubeInitializing = false;
+    if (kIsWeb &&
+        _providerFor(oldWidget.room.currentTrack) != MusicProviderId.spotify &&
+        _providerFor(widget.room.currentTrack) == MusicProviderId.spotify) {
+      unawaited(_runPlayback(_initializeSpotifyPlayback));
     }
   }
 
-  Future<void> _initializeSpotifyPlayback() async {
-    if (_spotifyReady || _spotifyInitializing) return;
-    _spotifyInitializing = true;
-    try {
-      final auth = ref.read(spotifyAuthServiceProvider);
-      final tokens = await auth.loadTokens();
-      if (tokens == null) return;
-      const requiredScopes = {
-        'streaming',
-        'user-modify-playback-state',
-        'user-read-playback-state',
-      };
-      if (!requiredScopes.every(tokens.scope.split(' ').contains)) {
-        throw StateError(
-            'Reconnect Spotify to grant browser playback permissions.');
+  void _initializeYouTube(int viewId) {
+    _youtubeViewId = viewId;
+    unawaited(_runPlayback(() async {
+      await _ensureYouTubeReady();
+      if (mounted &&
+          _providerFor(widget.room.currentTrack) == MusicProviderId.youtube) {
+        await _syncRoomPlayback(widget.room);
       }
-      final controller =
-          SpotifyWebPlaybackController(ref.read(spotifyApiClientProvider));
-      _spotifyPlayback = controller;
-      await controller.initialize(auth.validAccessToken);
-      _spotifyReady = true;
-      await _syncRoomPlayback(widget.room);
-    } catch (error) {
-      _showPlaybackError('Spotify player failed to start: $error');
-    } finally {
-      _spotifyInitializing = false;
+    }));
+  }
+
+  Future<void> _ensureYouTubeReady() async {
+    if (_youtubeReady) return;
+    final pending = _youtubeInitialization;
+    if (pending != null) return pending;
+    final viewId = _youtubeViewId;
+    if (viewId == null) {
+      throw StateError('The YouTube player view is not available yet.');
     }
+    final initialization = _youtubePlayback.initialize(viewId);
+    _youtubeInitialization = initialization;
+    try {
+      await initialization;
+      _youtubeReady = true;
+    } finally {
+      _youtubeInitialization = null;
+    }
+  }
+
+  Future<void> _initializeSpotifyPlayback() {
+    if (_spotifyReady) return Future<void>.value();
+    return _spotifyInitialization ??= _initializeSpotifyPlaybackOnce()
+        .whenComplete(() => _spotifyInitialization = null);
+  }
+
+  Future<void> _initializeSpotifyPlaybackOnce() async {
+    final auth = ref.read(spotifyAuthServiceProvider);
+    final tokens = await auth.loadTokens();
+    if (tokens == null) {
+      throw StateError('Connect Spotify from the home screen first.');
+    }
+    const requiredScopes = {
+      'streaming',
+      'user-modify-playback-state',
+      'user-read-playback-state',
+    };
+    if (!requiredScopes.every(tokens.scope.split(' ').contains)) {
+      throw StateError('Spotify playback needs additional permissions. '
+          'Return to the home screen, disconnect Spotify, and connect it again.');
+    }
+    final controller =
+        SpotifyWebPlaybackController(ref.read(spotifyApiClientProvider));
+    try {
+      await controller.initialize(auth.validAccessToken);
+    } catch (_) {
+      await controller.dispose();
+      rethrow;
+    }
+    _spotifyPlayback = controller;
+    _spotifyReady = true;
+    await _syncRoomPlayback(widget.room);
   }
 
   Future<void> _syncRoomPlayback(ListeningRoom previousRoom) async {
@@ -130,16 +159,25 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
         oldProvider != provider || oldTrack?['id'] != track?['id'];
     final stopped = previousRoom.playbackState.isPlaying &&
         !widget.room.playbackState.isPlaying;
-    if (trackChanged || stopped) {
-      await _pauseProvider(oldProvider);
-    }
-    if (oldProvider == MusicProviderId.youtube &&
-        provider != MusicProviderId.youtube) {
-      await _youtubePlayback.dispose();
-      _youtubeReady = false;
-    }
-    if (track == null) return;
     try {
+      if (trackChanged || stopped) {
+        await _pauseProvider(oldProvider);
+      }
+      if (oldProvider == MusicProviderId.youtube &&
+          provider != MusicProviderId.youtube) {
+        final pending = _youtubeInitialization;
+        if (pending != null) {
+          try {
+            await pending;
+          } catch (error) {
+            _showPlaybackError('YouTube player failed to start: $error');
+          }
+        }
+        await _youtubePlayback.dispose();
+        _youtubeReady = false;
+        _youtubeViewId = null;
+      }
+      if (track == null) return;
       final oldPosition = const SyncEngine()
           .projectedPosition(previousRoom.playbackState, DateTime.now());
       final newPosition = const SyncEngine()
@@ -188,7 +226,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
 
   Future<void> _playProvider(Track track) async {
     if (track.provider == MusicProviderId.youtube) {
-      if (!_youtubeReady) throw StateError('YouTube player is still loading.');
+      await _ensureYouTubeReady();
       await _youtubePlayback.play(track);
     } else {
       if (!_spotifyReady) {
@@ -196,7 +234,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
       }
       final controller = _spotifyPlayback;
       if (controller == null || !_spotifyReady) {
-        throw StateError('Connect Spotify and allow browser playback first.');
+        throw StateError('Spotify browser playback is not ready.');
       }
       await controller.play(track);
     }

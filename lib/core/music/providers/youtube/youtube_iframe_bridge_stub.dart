@@ -1,5 +1,5 @@
 abstract class YouTubeIframeBridge {
-  Future<void> initialize(String elementId);
+  Future<void> initialize(int viewId);
   Future<void> loadVideo(String videoId, Duration position);
   Future<void> play();
   Future<void> pause();
@@ -18,7 +18,7 @@ class _UnsupportedBridge implements YouTubeIframeBridge {
   Never unsupported() => throw UnsupportedError(
       'The YouTube IFrame Player API is available only on Flutter Web.');
   @override
-  Future<void> initialize(String elementId) => Future.sync(unsupported);
+  Future<void> initialize(int viewId) => Future.sync(unsupported);
   @override
   Future<void> loadVideo(String videoId, Duration position) =>
       Future.sync(unsupported);

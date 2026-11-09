@@ -71,6 +71,25 @@ void main() {
     expect(track?.albumArtUrl, contains('cover.jpg'));
   });
 
+  test('Spotify search uses the development-mode limit', () async {
+    final storage = MemorySpotifyStorage();
+    await storage.write('spotify_tokens',
+        '{"accessToken":"access","expiresAt":"${DateTime.now().add(const Duration(hours: 1)).toIso8601String()}","scope":""}');
+    final auth = SpotifyAuthService(
+        clientId: 'client',
+        redirectUri: 'https://example.test/callback',
+        storage: storage);
+    final client =
+        SpotifyApiClient(auth, httpClient: MockClient((request) async {
+      expect(request.url.path, '/v1/search');
+      expect(request.url.queryParameters['limit'], '10');
+      expect(request.url.queryParameters['q'], 'Dandelions');
+      return http.Response('{"tracks":{"items":[]}}', 200);
+    }));
+
+    expect(await client.search('Dandelions'), isEmpty);
+  });
+
   test('Spotify API sends bearer tokens and supports queue commands', () async {
     final storage = MemorySpotifyStorage();
     await storage.write('spotify_tokens',

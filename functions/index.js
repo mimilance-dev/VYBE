@@ -158,12 +158,16 @@ exports.joinRoom = onCall(async request => {
       const maxParticipants = roomCapacity(room);
       const roster = [...new Set((room.participants || []).filter(id => typeof id === 'string'))];
       const stale = [];
+      const participantSnapshots = new Map();
       for (const id of roster) {
         const participant = await tx.get(roomRef.collection('participants').doc(id));
+        participantSnapshots.set(id, participant);
         const lastSeenAt = participant.data()?.lastSeenAt?.toMillis?.() || 0;
         if (!participant.exists || participant.data()?.isOnline !== true ||
             lastSeenAt < Date.now() - PRESENCE_TIMEOUT_MS) stale.push(id);
       }
+      const participantRef = roomRef.collection('participants').doc(userId);
+      const previous = participantSnapshots.get(userId) || await tx.get(participantRef);
       const staleIds = new Set(stale.filter(Boolean));
       const active = new Set(roster.filter(id => !staleIds.has(id)));
       if (!active.has(userId) && active.size >= maxParticipants) {
@@ -173,8 +177,6 @@ exports.joinRoom = onCall(async request => {
       for (const id of staleIds) {
         tx.delete(roomRef.collection('participants').doc(id));
       }
-      const participantRef = roomRef.collection('participants').doc(userId);
-      const previous = await tx.get(participantRef);
       const joinedAt = previous.exists ? previous.data().joinedAt : FieldValue.serverTimestamp();
       tx.set(participantRef, {userId, displayName, avatarUrl: avatarUrl || null, joinedAt, lastSeenAt: FieldValue.serverTimestamp(), isOnline: true});
       tx.update(roomRef, {participants: [...active].slice(0, maxParticipants), updatedAt: FieldValue.serverTimestamp()});

@@ -89,6 +89,7 @@ class SpotifyAuthService {
       'code_challenge_method': 'S256',
       'code_challenge': challenge,
       'state': effectiveState as String,
+      'show_dialog': 'true',
       if (scope.isNotEmpty) 'scope': scope,
     });
   }

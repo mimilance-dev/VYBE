@@ -73,7 +73,7 @@ class SpotifyApiClient {
 
   Future<List<Track>> search(String query) async {
     final data = await _authorizedJson('GET', '/search',
-        query: {'type': 'track', 'limit': '20', 'q': query});
+        query: {'type': 'track', 'limit': '10', 'q': query});
     final items = ((data['tracks'] as Map)['items'] as List).cast<Map>();
     return items.map((item) => _track(item.cast<String, dynamic>())).toList();
   }

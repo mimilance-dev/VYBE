@@ -17,7 +17,7 @@ class YouTubePlaybackController implements MusicPlaybackController {
   int _queueIndex = 0;
   String? _trackId;
 
-  Future<void> initialize(String elementId) => _bridge.initialize(elementId);
+  Future<void> initialize(int viewId) => _bridge.initialize(viewId);
   Future<void> dispose() async {
     _trackId = null;
     await _bridge.dispose();

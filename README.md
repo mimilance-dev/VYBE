@@ -112,6 +112,16 @@ Restrict the YouTube Data API key to the deployed web referrers in Google Cloud.
 The YouTube IFrame Player is displayed in the room and remains subject to
 YouTube's embedding, autoplay, and availability restrictions.
 
+### Playback troubleshooting
+
+- Spotify development-mode search returns at most 10 results per request.
+- If Spotify asks for playback permissions, disconnect and reconnect Spotify
+  from the home screen. Each listener needs their own eligible Spotify account.
+- If the YouTube player cannot load, check that the browser can access
+  `youtube.com` and that privacy extensions are not blocking the embedded
+  player. Try Play again after resolving the blockage. Individual videos may
+  still prevent embedding.
+
 Official references:
 
 - https://developer.spotify.com/documentation/web-api/concepts/authorization
