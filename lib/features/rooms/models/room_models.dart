@@ -15,8 +15,7 @@ class RoomParticipant {
   final DateTime lastSeenAt;
   final bool isOnline;
 
-  bool get connected =>
-      isOnline && DateTime.now().difference(lastSeenAt).inSeconds < 45;
+  bool get connected => isOnline;
 
   factory RoomParticipant.fromMap(Map<String, dynamic> data, String userId) {
     final now = DateTime.now();

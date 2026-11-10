@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 
 import '../models/room_models.dart';
 import '../playback/playback_command.dart';
@@ -53,6 +54,7 @@ class FirestoreRoomRepository implements RoomRepository {
       : _functions = functions;
   final FirebaseFirestore _firestore;
   final FirebaseFunctions? _functions;
+  final Map<String, _PresenceSession> _presenceSessions = {};
 
   FirebaseFunctions get _trustedFunctions =>
       _functions ?? FirebaseFunctions.instance;
@@ -61,13 +63,15 @@ class FirestoreRoomRepository implements RoomRepository {
       _firestore.collection('rooms');
 
   Future<void> _startPresence(String roomId, String userId) async {
-    final presence = FirebaseDatabase.instance.ref('presence/$roomId/$userId');
-    await presence.onDisconnect().remove();
-    await presence.set({
-      'roomId': roomId,
-      'connected': true,
-      'connectedAt': ServerValue.timestamp,
-    });
+    final key = '$roomId/$userId';
+    await _presenceSessions.remove(key)?.stop();
+    final session = _PresenceSession(FirebaseDatabase.instance, roomId, userId);
+    _presenceSessions[key] = session;
+    await session.start();
+  }
+
+  Future<void> _stopPresence(String roomId, String userId) async {
+    await _presenceSessions.remove('$roomId/$userId')?.stop();
   }
 
   @override
@@ -151,18 +155,10 @@ class FirestoreRoomRepository implements RoomRepository {
     var presence = <String, dynamic>{};
 
     void emit() {
-      final now = DateTime.now();
       controller.add(participants.map((participant) {
         final data = presence[participant.userId];
         final connectedAt = data is Map ? data['connectedAt'] : null;
-        final connected = data is Map &&
-            data['connected'] == true &&
-            connectedAt is int &&
-            now
-                    .difference(
-                        DateTime.fromMillisecondsSinceEpoch(connectedAt))
-                    .inSeconds <
-                45;
+        final connected = data is Map && data['connected'] == true;
         return participant.copyWith(
           lastSeenAt: connectedAt is int
               ? DateTime.fromMillisecondsSinceEpoch(connectedAt)
@@ -204,9 +200,12 @@ class FirestoreRoomRepository implements RoomRepository {
       _trustedFunctions.httpsCallable('heartbeatRoom').call({'roomId': roomId});
 
   @override
-  Future<void> setOffline(String roomId, String userId) => _trustedFunctions
-      .httpsCallable('leaveRoom')
-      .call({'roomId': roomId, 'offline': true});
+  Future<void> setOffline(String roomId, String userId) async {
+    await _stopPresence(roomId, userId);
+    await _trustedFunctions
+        .httpsCallable('leaveRoom')
+        .call({'roomId': roomId, 'offline': true});
+  }
 
   @override
   @override
@@ -239,7 +238,15 @@ class FirestoreRoomRepository implements RoomRepository {
 
   @override
   Future<void> leave(String roomId, String userId) async {
-    await _trustedFunctions.httpsCallable('leaveRoom').call({'roomId': roomId});
+    await _stopPresence(roomId, userId);
+    try {
+      await _trustedFunctions
+          .httpsCallable('leaveRoom')
+          .call({'roomId': roomId});
+    } catch (error) {
+      await _startPresence(roomId, userId);
+      rethrow;
+    }
   }
 
   @override
@@ -247,5 +254,53 @@ class FirestoreRoomRepository implements RoomRepository {
     await _trustedFunctions
         .httpsCallable('deleteRoom')
         .call({'roomId': roomId});
+  }
+}
+
+class _PresenceSession {
+  _PresenceSession(this.database, this.roomId, this.userId);
+
+  final FirebaseDatabase database;
+  final String roomId;
+  final String userId;
+  StreamSubscription<DatabaseEvent>? _connection;
+  Future<void> _pending = Future.value();
+  bool _stopped = false;
+
+  DatabaseReference get _presence => database.ref('presence/$roomId/$userId');
+
+  Future<void> _register() async {
+    if (_stopped) return;
+    await _presence.onDisconnect().remove();
+    if (_stopped) return;
+    await _presence.set({
+      'roomId': roomId,
+      'connected': true,
+      'connectedAt': ServerValue.timestamp,
+      'managed': true,
+    });
+  }
+
+  Future<void> start() async {
+    _pending = _register();
+    await _pending;
+    if (_stopped) return;
+    _connection = database.ref('.info/connected').onValue.listen((event) {
+      if (event.snapshot.value != true || _stopped) return;
+      _pending = _pending.then((_) => _register()).catchError(
+        (Object error, StackTrace stack) {
+          debugPrint('Room presence reconnect failed: $error\n$stack');
+        },
+      );
+    }, onError: (Object error, StackTrace stack) {
+      debugPrint('Room presence connection failed: $error\n$stack');
+    });
+  }
+
+  Future<void> stop() async {
+    _stopped = true;
+    await _connection?.cancel();
+    await _pending;
+    await _presence.onDisconnect().cancel();
   }
 }

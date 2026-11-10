@@ -19,6 +19,7 @@ coverage/
 .DS_Store
 
 # Firebase local configuration
+.firebase/
 firebase_options.dart
 .env
 .env.*

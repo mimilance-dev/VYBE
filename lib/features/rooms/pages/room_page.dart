@@ -23,6 +23,7 @@ class _RoomPageState extends ConsumerState<RoomPage>
   RoomNotifier? _presence;
   String? _enterError;
   bool _joining = false;
+  bool _hasEnteredListeningRoom = false;
 
   @override
   void didChangeDependencies() {
@@ -95,7 +96,8 @@ class _RoomPageState extends ConsumerState<RoomPage>
                   ?.where((participant) => participant.connected)
                   .toList(growable: false) ??
               const <RoomParticipant>[];
-          if (connected.length >= 2) {
+          if (connected.length >= 2) _hasEnteredListeningRoom = true;
+          if (_hasEnteredListeningRoom) {
             final currentUser = ref.read(authStateProvider).valueOrNull;
             return ListeningRoomScreen(
                 room: room,
@@ -127,8 +129,15 @@ class _RoomPageState extends ConsumerState<RoomPage>
   Future<void> _leave() async {
     final userId = ref.read(authStateProvider).valueOrNull?.id;
     if (userId == null) return;
-    await _presence?.leave();
-    if (mounted) context.go('/home');
+    try {
+      await _presence?.leave();
+      if (mounted) context.go('/home');
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not leave the room: $error')));
+      }
+    }
   }
 }
 

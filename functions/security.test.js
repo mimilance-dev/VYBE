@@ -1,9 +1,16 @@
 const assert = require('assert');
 const crypto = require('crypto');
+const {isActivePresence} = require('./presence');
 assert.equal('ABC123'.replace(/[^A-Z0-9]/g, ''), 'ABC123');
 assert.equal('abc 123'.toUpperCase().replace(/[^A-Z0-9]/g, ''), 'ABC123');
 assert.ok(crypto.randomBytes(6).length === 6);
 assert.ok(crypto.randomBytes(8).length === 8);
 assert.ok(crypto.randomBytes(32).length === 32);
 assert.ok(/^ABCDEFGHJKLMNPQRSTUVWXYZ23456789$/.test('ABCDEFGHJKLMNPQRSTUVWXYZ23456789'));
+const now = 100000;
+assert.ok(isActivePresence({connected: true, managed: true, connectedAt: 1}, now));
+assert.ok(isActivePresence({connected: true, connectedAt: 55000}, now));
+assert.ok(!isActivePresence({connected: true, connectedAt: 54999}, now));
+assert.ok(!isActivePresence({connected: false, managed: true, connectedAt: now}, now));
+assert.ok(!isActivePresence(null, now));
 console.log('security invariants ok');

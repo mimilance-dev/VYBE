@@ -17,7 +17,8 @@
         "$uid": {
           ".write": "auth != null && auth.uid === $uid && root.child('roomMembers/' + $roomId + '/' + auth.uid).exists() && (!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber() && newData.child('connectedAt').val() > 0))",
           ".validate": "!newData.exists() || (newData.child('roomId').val() === $roomId && newData.child('connected').isBoolean() && newData.child('connectedAt').isNumber())",
-          "$other": {".validate": "$other === 'roomId' || $other === 'connected' || $other === 'connectedAt'"}
+          "managed": {".validate": "newData.isBoolean()"},
+          "$other": {".validate": "$other === 'roomId' || $other === 'connected' || $other === 'connectedAt' || $other === 'managed'"}
         }
       }
     }

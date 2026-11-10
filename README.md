@@ -13,6 +13,12 @@ Realtime Database is used for room presence. When overriding Firebase
 compile-time configuration, set `FIREBASE_DATABASE_URL` to the Realtime
 Database URL; if omitted, the app uses the project's default
 `-default-rtdb.firebaseio.com` endpoint.
+Switching tabs or backgrounding the app does not intentionally leave a room.
+Presence follows the Realtime Database connection, which can still disconnect
+when a browser or operating system suspends the app. A listener who has entered
+the listening screen stays there while the other listener reconnects.
+Deploy the Realtime Database rules and Firebase Functions together with the
+Flutter app when updating presence behavior.
 
 ## Music provider architecture and limitations
 
@@ -88,6 +94,22 @@ connected before browser playback was enabled, disconnect Spotify from the home
 screen and connect again to grant them. Spotify playback requires Premium and Spotify
 application eligibility for the Web Playback SDK.
 
+### Deploying to Firebase Hosting
+
+Put `SPOTIFY_CLIENT_ID` and `YOUTUBE_API_KEY` in a local, untracked
+`.env.production.json` file as a JSON object. These values are included in the
+web build, so the YouTube key must be restricted to the appropriate APIs and
+Hosting referrers. Do not include a Spotify client secret.
+
+```sh
+flutter build web --dart-define-from-file=.env.production.json
+firebase deploy --only database,functions,hosting
+```
+
+Register the Hosting URL's `/spotify-callback` route in Spotify, and allow the
+Hosting domain in Firebase Authentication and the App Check reCAPTCHA settings.
+Firebase Hosting rewrites client routes to the Flutter app.
+
 Never configure a Spotify client secret in a Flutter Web build. Spotify tokens are
 stored in Flutter Secure Storage; browser storage cannot provide hardware-backed
 secrets, so refresh tokens should be treated as sensitive and revoked whenever a
@@ -117,6 +139,9 @@ YouTube's embedding, autoplay, and availability restrictions.
 - Spotify development-mode search returns at most 10 results per request.
 - If Spotify asks for playback permissions, disconnect and reconnect Spotify
   from the home screen. Each listener needs their own eligible Spotify account.
+- If the Spotify player does not become ready, check Premium status, browser
+  playback/DRM settings and content blockers, then retry. Both listeners need
+  separate Spotify connections; SDK or account restrictions can prevent playback.
 - If the YouTube player cannot load, check that the browser can access
   `youtube.com` and that privacy extensions are not blocking the embedded
   player. Try Play again after resolving the blockage. Individual videos may

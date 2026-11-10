@@ -1,8 +1,10 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vybe/features/rooms/models/room_models.dart';
 import 'package:vybe/features/rooms/repositories/room_repository.dart';
 import 'package:vybe/features/rooms/services/room_service.dart';
 import 'package:vybe/features/rooms/playback/playback_command.dart';
+import 'package:vybe/features/rooms/providers/room_providers.dart';
 
 void main() {
   test('room codes are six characters and human-friendly', () {
@@ -41,7 +43,7 @@ void main() {
     expect(participant.copyWith(isOnline: true).connected, isTrue);
   });
 
-  test('presence requires both online and a fresh heartbeat', () {
+  test('presence reflects the connection even when heartbeats are delayed', () {
     final participant = RoomParticipant(
       userId: 'u1',
       displayName: 'Ada',
@@ -57,11 +59,49 @@ void main() {
             .copyWith(
                 lastSeenAt: DateTime.now().subtract(const Duration(minutes: 1)))
             .connected,
-        isFalse);
+        isTrue);
+  });
+
+  testWidgets('backgrounding does not mark a listener offline', (tester) async {
+    final repository = _LifecycleRepository();
+    final notifier = RoomNotifier(RoomService(repository), 'room', 'u1')
+      ..start();
+    await tester.pump();
+    expect(repository.heartbeats, 1);
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+    ]) {
+      notifier.didChangeAppLifecycleState(state);
+    }
+    await tester.pump(const Duration(seconds: 21));
+    expect(repository.offlineUpdates, 0);
+    expect(repository.heartbeats, 2);
+    notifier.didChangeAppLifecycleState(AppLifecycleState.resumed);
+    notifier.dispose();
+    await tester.pump();
+    expect(repository.offlineUpdates, 1);
+  });
+
+  testWidgets('explicit leave does not also mark offline on dispose',
+      (tester) async {
+    final repository = _LifecycleRepository();
+    final notifier = RoomNotifier(RoomService(repository), 'room', 'u1')
+      ..start();
+    await tester.pump();
+    await notifier.leave();
+    notifier.dispose();
+    await tester.pump();
+    expect(repository.leaves, 1);
+    expect(repository.offlineUpdates, 0);
   });
 }
 
 class _LifecycleRepository implements RoomRepository {
+  int heartbeats = 0;
+  int offlineUpdates = 0;
+  int leaves = 0;
   @override
   Future<ListeningRoom> createRoom({
     required String hostId,
@@ -107,13 +147,20 @@ class _LifecycleRepository implements RoomRepository {
   Future<void> setOnline(String roomId, RoomParticipant participant) async {}
 
   @override
-  Future<void> heartbeat(String roomId, String userId) async {}
+  Future<void> heartbeat(String roomId, String userId) async {
+    heartbeats++;
+  }
 
   @override
-  Future<void> setOffline(String roomId, String userId) async {}
+  Future<void> setOffline(String roomId, String userId) async {
+    offlineUpdates++;
+  }
 
   @override
-  Future<void> leave(String roomId, String userId) async {}
+  Future<void> leave(String roomId, String userId) async {
+    leaves++;
+  }
+
   @override
   Future<void> deleteRoom(String roomId) async {}
 

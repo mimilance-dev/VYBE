@@ -2,6 +2,7 @@ const {onCall, HttpsError} = require('firebase-functions/v2/https');
 const {initializeApp} = require('firebase-admin/app');
 const {getFirestore, FieldValue, Timestamp} = require('firebase-admin/firestore');
 const {getDatabase, ServerValue} = require('firebase-admin/database');
+const {isActivePresence} = require('./presence');
 initializeApp();
 const db = getFirestore();
 const realtimeDb = getDatabase();
@@ -27,7 +28,6 @@ function roomCode() {
   }
   return code;
 }
-const PRESENCE_TIMEOUT_MS = 45000;
 const MAX_ROOM_PARTICIPANTS = 2;
 
 function roomCapacity(room) {
@@ -140,16 +140,15 @@ exports.joinRoom = onCall(async request => {
   }
   const reservation = await realtimeDb.ref(`presence/${roomId}`).transaction(current => {
     const presence = current || {};
-    const cutoff = Date.now() - PRESENCE_TIMEOUT_MS;
     const activeIds = Object.entries(presence)
-      .filter(([, value]) => value?.connected === true &&
-        typeof value.connectedAt === 'number' && value.connectedAt >= cutoff)
+      .filter(([, value]) => isActivePresence(value))
       .map(([uid]) => uid);
     if (!activeIds.includes(userId) && activeIds.length >= maxParticipants) return;
     presence[userId] = {roomId, connected: true, connectedAt: Date.now()};
     return presence;
   });
   if (!reservation.committed) throw new HttpsError('failed-precondition', 'This room is already vibing with two people.');
+  const activePresence = reservation.snapshot.val() || {};
   try {
     await db.runTransaction(async tx => {
       const snap = await tx.get(roomRef);
@@ -162,9 +161,7 @@ exports.joinRoom = onCall(async request => {
       for (const id of roster) {
         const participant = await tx.get(roomRef.collection('participants').doc(id));
         participantSnapshots.set(id, participant);
-        const lastSeenAt = participant.data()?.lastSeenAt?.toMillis?.() || 0;
-        if (!participant.exists || participant.data()?.isOnline !== true ||
-            lastSeenAt < Date.now() - PRESENCE_TIMEOUT_MS) stale.push(id);
+        if (!participant.exists || !isActivePresence(activePresence[id])) stale.push(id);
       }
       const participantRef = roomRef.collection('participants').doc(userId);
       const previous = participantSnapshots.get(userId) || await tx.get(participantRef);
@@ -216,7 +213,7 @@ exports.leaveRoom = onCall(async request => {
   await rateLimit(userId, 'leave', 60);
   const roomRef = await requireParticipant(request.data?.roomId, userId);
   if (request.data?.offline === true) {
-    // Backgrounded tab: show as offline but keep membership so the user can resume.
+    // Keep membership when a client disconnects without explicitly leaving.
     await roomRef.collection('participants').doc(userId).update({isOnline: false, lastSeenAt: FieldValue.serverTimestamp()});
     await realtimeDb.ref(`presence/${request.data.roomId}/${userId}`).remove();
     return;

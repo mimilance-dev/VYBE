@@ -13,7 +13,6 @@ import '../repositories/room_repository.dart';
 import '../playback/playback_command.dart';
 import '../services/room_service.dart';
 import '../../../core/music/music_cache.dart';
-import 'room_presence_platform.dart';
 
 class UnconfiguredRoomRepository implements RoomRepository {
   static Exception get error =>
@@ -117,21 +116,23 @@ class RoomNotifier extends ChangeNotifier with WidgetsBindingObserver {
   final String _roomId;
   final String _userId;
   Timer? _heartbeat;
+  Future<void>? _pendingHeartbeat;
   bool _started = false;
+  bool _left = false;
 
   void start() {
     if (_started) return;
     _started = true;
     WidgetsBinding.instance.addObserver(this);
-    observeRoomPageLifecycle(_startHeartbeat, markOffline);
     _startHeartbeat();
   }
 
   void _startHeartbeat() {
+    if (_left) return;
     if (_heartbeat?.isActive == true) return;
-    _sendHeartbeat();
-    _heartbeat =
-        Timer.periodic(const Duration(seconds: 20), (_) => _sendHeartbeat());
+    _scheduleHeartbeat();
+    _heartbeat = Timer.periodic(
+        const Duration(seconds: 20), (_) => _scheduleHeartbeat());
   }
 
   void _stopHeartbeat() {
@@ -142,32 +143,44 @@ class RoomNotifier extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _sendHeartbeat() async {
     try {
       await _service.heartbeat(_roomId, _userId);
-    } catch (_) {}
+    } catch (error, stack) {
+      debugPrint('Room heartbeat failed: $error\n$stack');
+    }
+  }
+
+  void _scheduleHeartbeat() {
+    if (_pendingHeartbeat != null) return;
+    _pendingHeartbeat = _sendHeartbeat().whenComplete(() {
+      _pendingHeartbeat = null;
+    });
   }
 
   Future<void> markOffline() async {
     _stopHeartbeat();
     try {
+      await _pendingHeartbeat;
       await _service.markOffline(_roomId, _userId);
-    } catch (_) {}
+    } catch (error, stack) {
+      debugPrint('Room offline update failed: $error\n$stack');
+    }
   }
 
   Future<void> leave() async {
     _stopHeartbeat();
     try {
+      await _pendingHeartbeat;
       await _service.leave(_roomId, _userId);
-    } catch (_) {}
+      _left = true;
+    } catch (error) {
+      _startHeartbeat();
+      rethrow;
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _startHeartbeat();
-    } else if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached) {
-      _stopHeartbeat();
-      markOffline();
     }
   }
 
@@ -175,7 +188,7 @@ class RoomNotifier extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     _stopHeartbeat();
     WidgetsBinding.instance.removeObserver(this);
-    markOffline();
+    if (!_left) unawaited(markOffline());
     super.dispose();
   }
 }

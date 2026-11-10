@@ -125,6 +125,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
   Future<void> _initializeSpotifyPlaybackOnce() async {
     final auth = ref.read(spotifyAuthServiceProvider);
     final tokens = await auth.loadTokens();
+    if (!mounted) return;
     if (tokens == null) {
       throw StateError('Connect Spotify from the home screen first.');
     }
@@ -144,6 +145,10 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
     } catch (_) {
       await controller.dispose();
       rethrow;
+    }
+    if (!mounted) {
+      await controller.dispose();
+      return;
     }
     _spotifyPlayback = controller;
     _spotifyReady = true;
@@ -705,11 +710,24 @@ class _TopBar extends StatelessWidget {
                         .toUpperCase()))),
           const SizedBox(width: 8),
           Tooltip(
-              message: isPlaying ? 'Both listening' : 'One of you is paused',
+              message: participants.length < 2
+                  ? 'Waiting for the other listener to reconnect'
+                  : isPlaying
+                      ? 'Both listening'
+                      : 'One of you is paused',
               child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.circle, size: 8, color: AppColors.success),
+                Icon(Icons.circle,
+                    size: 8,
+                    color: participants.length < 2
+                        ? AppColors.textSecondary
+                        : AppColors.success),
                 const SizedBox(width: 7),
-                Text(isPlaying ? 'Both listening' : 'A little pause',
+                Text(
+                    participants.length < 2
+                        ? 'Waiting to reconnect'
+                        : isPlaying
+                            ? 'Both listening'
+                            : 'A little pause',
                     style: Theme.of(context)
                         .textTheme
                         .labelSmall
