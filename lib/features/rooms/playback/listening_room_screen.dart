@@ -129,12 +129,7 @@ class _ListeningRoomScreenState extends ConsumerState<ListeningRoomScreen>
     if (tokens == null) {
       throw StateError('Connect Spotify from the home screen first.');
     }
-    const requiredScopes = {
-      'streaming',
-      'user-modify-playback-state',
-      'user-read-playback-state',
-    };
-    if (!requiredScopes.every(tokens.scope.split(' ').contains)) {
+    if (!tokens.hasPlaybackScopes) {
       throw StateError('Spotify playback needs additional permissions. '
           'Return to the home screen, disconnect Spotify, and connect it again.');
     }

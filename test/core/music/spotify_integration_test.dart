@@ -34,8 +34,19 @@ void main() {
     expect(uri.queryParameters['code_challenge_method'], 'S256');
     expect(uri.queryParameters['code_challenge'], isNotEmpty);
     expect(uri.queryParameters['client_id'], 'public-client-id');
-    expect(uri.queryParameters['scope']!.split(' '), contains('streaming'));
+    expect(uri.queryParameters['scope']!.split(' '),
+        containsAll(['streaming', 'user-read-private']));
     expect(uri.queryParameters, isNot(contains('client_secret')));
+  });
+
+  test('old Spotify connections require new playback permissions', () {
+    SpotifyTokens tokens(String scope) => SpotifyTokens(
+        accessToken: 'token', expiresAt: DateTime.now(), scope: scope);
+    expect(
+        tokens('streaming user-modify-playback-state user-read-playback-state')
+            .hasPlaybackScopes,
+        isFalse);
+    expect(tokens(SpotifyAuthService.defaultScopes).hasPlaybackScopes, isTrue);
   });
 
   test('Spotify API maps track metadata and artwork', () async {

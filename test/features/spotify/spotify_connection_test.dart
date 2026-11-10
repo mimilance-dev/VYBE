@@ -72,6 +72,7 @@ void main() {
       expect(params['code_challenge_method'], 'S256');
       expect(params['scope']!.split(' '),
           containsAll(SpotifyAuthService.defaultScopes.split(' ')));
+      expect(params['scope']!.split(' '), contains('user-read-private'));
       expect(params['show_dialog'], 'true');
       expect(params, isNot(contains('client_secret')));
     });

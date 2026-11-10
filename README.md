@@ -120,6 +120,7 @@ Official Spotify scopes used by the integration are:
 - `user-read-playback-state`
 - `user-read-currently-playing`
 - `user-modify-playback-state`
+- `user-read-private`
 - `streaming`
 
 Public search and track metadata do not require playback-specific scopes. Search

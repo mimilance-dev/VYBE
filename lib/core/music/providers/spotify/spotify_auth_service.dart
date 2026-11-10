@@ -15,6 +15,9 @@ class SpotifyTokens {
   final DateTime expiresAt;
   final String scope;
 
+  bool get hasPlaybackScopes =>
+      SpotifyAuthService.playbackScopes.every(scope.split(' ').contains);
+
   Map<String, Object?> toJson() => {
         'accessToken': accessToken,
         'refreshToken': refreshToken,
@@ -59,7 +62,15 @@ class SpotifyAuthService {
   // at the Spotify account/device layer. 'streaming' enables a browser SDK
   // player but does not turn search-capable accounts into playable devices.
   static const defaultScopes = 'user-read-playback-state '
-      'user-read-currently-playing user-modify-playback-state streaming';
+      'user-read-currently-playing user-modify-playback-state '
+      'user-read-private streaming';
+
+  static const playbackScopes = {
+    'streaming',
+    'user-modify-playback-state',
+    'user-read-playback-state',
+    'user-read-private',
+  };
 
   final String clientId;
   final String redirectUri;

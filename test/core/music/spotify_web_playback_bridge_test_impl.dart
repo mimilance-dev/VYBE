@@ -14,13 +14,15 @@ void main() {
           window.testSpotifyPlayer = this;
           this.addListener = (name, callback) => { listeners[name] = callback; };
           this.connect = () => {
-            options.getOAuthToken(token => {
+            new Promise(options.getOAuthToken).then(token => {
               window.testSpotifyToken = token;
               if (token === 'valid-token') {
                 listeners.ready({device_id: 'device-1'});
               } else {
                 listeners.authentication_error({message: 'Invalid token'});
               }
+            }).catch(error => {
+              listeners.authentication_error({message: String(error)});
             });
             return Promise.resolve(true);
           };
@@ -62,6 +64,30 @@ void main() {
     expect(context['testSpotifyVolume'], 0.5);
     await bridge.dispose();
     expect(context['testSpotifyDisconnected'], isTrue);
+  });
+
+  test('also supports a single-argument token callback', () async {
+    context.callMethod('eval', [
+      r'''
+      window.Spotify.Player = function(options) {
+        const listeners = {};
+        this.addListener = (name, callback) => { listeners[name] = callback; };
+        this.connect = () => {
+          options.getOAuthToken(token => {
+            if (token === 'valid-token') listeners.ready({device_id: 'device-1'});
+          });
+          return Promise.resolve(true);
+        };
+        this.disconnect = () => {};
+      };
+    '''
+    ]);
+    final bridge = WebSpotifyPlaybackBridge();
+    await bridge
+        .initialize(() async => 'valid-token')
+        .timeout(const Duration(seconds: 5));
+    expect(await bridge.deviceId, 'device-1');
+    await bridge.dispose();
   });
 
   test('surfaces SDK authentication failures', () async {

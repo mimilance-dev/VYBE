@@ -122,7 +122,7 @@ class WebSpotifyPlaybackBridge implements SpotifyWebPlaybackBridge {
         js_util.jsify({
           'name': 'VYBE',
           'volume': 0.72,
-          'getOAuthToken': js_util.allowInterop((Object callback) {
+          'getOAuthToken': js_util.allowInterop((Object callback, [Object? _]) {
             Future<void>(() async {
               final token = await getAccessToken();
               if (generation != _generation) return;
